@@ -87,18 +87,21 @@ def _posted_at(card) -> str | None:
     """
     low = card.get_text(" ", strip=True).lower()
     now = datetime.now(timezone.utc)
-    m = re.search(r"posted\s+(\d+)\s*(hour|day|week|month|year)s?\s*ago", low)
+    num = r"(\d+|a|an|few|couple|several)"
+    unit = r"(minute|min|hour|hr|day|week|month|year)"
+    m = re.search(rf"posted\s+{num}\s*{unit}s?\s*ago", low)
     if not m:
         if re.search(r"posted\s+(?:just now|today)", low):
             return now.date().isoformat()
         if re.search(r"posted\s+yesterday", low):
             return (now - timedelta(days=1)).date().isoformat()
-        m = re.search(r"(\d+)\s*(hour|day|week|month|year)s?\s*ago", low)
+        m = re.search(rf"{num}\s*{unit}s?\s*ago", low)
     if not m:
         return None
-    n = int(m.group(1))
-    days = {"hour": n / 24.0, "day": n, "week": n * 7, "month": n * 30, "year": n * 365}[m.group(2)]
-    return (now - timedelta(days=days)).date().isoformat()
+    word = m.group(1)
+    n = 1 if word in ("a", "an") else (3 if word in ("few", "couple") else 5 if word == "several" else int(word))
+    per_day = {"minute": 0, "min": 0, "hour": 0, "hr": 0, "day": 1, "week": 7, "month": 30, "year": 365}
+    return (now - timedelta(days=n * per_day[m.group(2)])).date().isoformat()
 
 
 def _to_job(card) -> dict | None:

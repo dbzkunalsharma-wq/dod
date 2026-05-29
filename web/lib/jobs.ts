@@ -191,9 +191,11 @@ export function relativeTime(
   });
 }
 
-/** "Nd ago" style used in the card meta row (always relative, never absolute). */
+/** Real posting age for the card meta. Uses `posted_at` ONLY — when a source didn't
+ *  expose a posting date we say "Recently" rather than falling back to `seen_at` (which
+ *  is just when WE scraped it, and made weeks-old posts read as "6h ago"). */
 export function postedAgo(job: Job, now: number = Date.now()): string {
-  return relativeTime(job.posted_at ?? job.seen_at, now);
+  return job.posted_at ? relativeTime(job.posted_at, now) : "Recently";
 }
 
 /* ------------------------------------------------------------------ */
