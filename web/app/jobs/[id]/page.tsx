@@ -16,6 +16,7 @@ import {
   topCompanyName,
 } from "@/lib/jobs";
 import { getJobBySlug, loadAllJobs } from "@/lib/jobs-data";
+import { ogImageUrl } from "@/lib/og";
 import type { Job } from "@/lib/types";
 
 /**
@@ -74,6 +75,18 @@ export async function generateMetadata({
   const description = metaDescription(job);
   const canonical = `/jobs/${jobSlug(job.id)}`;
 
+  // Dynamic share card: role headline, "Company · Location" subtitle (skipping
+  // whichever is missing), discipline label + hue, and a salary chip if listed.
+  const location = job.location?.trim();
+  const ogImage = ogImageUrl({
+    kind: "job",
+    title: job.title,
+    subtitle: [company, location].filter(Boolean).join(" · ") || undefined,
+    tag: DISCIPLINE_MAP[job.discipline].label,
+    salary: job.salary?.trim() || undefined,
+    hue: job.discipline,
+  });
+
   return {
     title,
     description,
@@ -85,11 +98,13 @@ export async function generateMetadata({
       url: canonical,
       siteName: "DOD",
       locale: "en_IN",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: "summary_large_image",
       title: `${title} · DOD`,
       description,
+      images: [ogImage],
     },
   };
 }

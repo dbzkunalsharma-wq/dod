@@ -4,9 +4,23 @@ import Link from "next/link";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { PageNav } from "@/components/PageNav";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { DISCIPLINE_MAP, sourceLabel } from "@/lib/jobs";
+import { DISCIPLINE_MAP, DISCIPLINES, sourceLabel } from "@/lib/jobs";
 import { loadAllJobs, loadStatsHistory } from "@/lib/jobs-data";
-import { computeInsights, computeSourceHealth } from "@/lib/insights";
+import {
+  computeInsights,
+  computeSourceHealth,
+  formatPay,
+  SALARY_MIN_SAMPLE,
+  type SalarySlice,
+} from "@/lib/insights";
+import { ogImageUrl } from "@/lib/og";
+
+const OG_IMAGE = ogImageUrl({
+  kind: "site",
+  title: "India design hiring insights",
+  subtitle: "Trending companies · disciplines · cities · pay",
+  tag: "India design jobs",
+});
 
 /**
  * Insights (server, SSG) — a deterministic analytics snapshot of India design
@@ -30,12 +44,14 @@ export const metadata: Metadata = {
     url: "/insights",
     siteName: "DOD",
     locale: "en_IN",
+    images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Insights — India design hiring · DOD",
     description:
       "Trends in India design hiring — trending companies, source health, discipline mix and more.",
+    images: [OG_IMAGE],
   },
 };
 
@@ -53,6 +69,7 @@ export default async function InsightsPage() {
   ]);
   const insights = computeInsights(jobs);
   const health = computeSourceHealth(history);
+  const { salary } = insights;
 
   const stats = [
     { label: "Total roles", value: insights.total },
@@ -340,7 +357,143 @@ export default async function InsightsPage() {
             </div>
           </section>
         </div>
+
+        {/* ---- Salary (honest, directional) ------------------------------- */}
+        {salary.count >= SALARY_MIN_SAMPLE && !salary.overall.na && (
+          <section aria-labelledby="salary-h" className="mt-8">
+            <h2
+              id="salary-h"
+              className="text-sm font-medium uppercase tracking-wide text-white/45"
+            >
+              Pay snapshot
+            </h2>
+            <p className="mt-1 max-w-3xl text-xs text-white/45">
+              Based on the {salary.count.toLocaleString("en-IN")} roles (~
+              {salary.coveragePct}%) that disclose pay — directional, not
+              exhaustive. India design listings rarely post salaries, and those
+              that do are mostly internships and junior roles, so figures are
+              shown per month (full-time annual salaries are seldom listed).
+            </p>
+
+            {/* overall median + range */}
+            <div className="dod-glass dod-glass--silver mt-3 rounded-2xl p-5 sm:p-6">
+              <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-white/45">
+                    Median monthly pay
+                  </p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-white sm:text-4xl">
+                    {formatPay(salary.overall.median)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-medium uppercase tracking-wide text-white/45">
+                    Typical range (p25–p75)
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white/85">
+                    {formatPay(salary.overall.p25)}
+                    <span className="px-1.5 text-white/40">–</span>
+                    {formatPay(salary.overall.p75)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* breakdowns: discipline / experience / cities */}
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <SalaryBreakdown
+                title="By discipline"
+                slices={salary.byDiscipline}
+                dots={DISCIPLINES.map((d) => d.dot)}
+              />
+              <SalaryBreakdown
+                title="By experience"
+                slices={salary.byExperience}
+              />
+              <SalaryBreakdown
+                title="By city"
+                slices={salary.byCity}
+                emptyHint="Not enough disclosed pay by city yet."
+              />
+            </div>
+          </section>
+        )}
       </div>
     </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Salary breakdown card — compact median bars per slice              */
+/*  Hides "n/a" slices (count < SALARY_MIN_SAMPLE) per the brief; bars  */
+/*  scale to the largest median among the shown slices so they compare */
+/*  within the group. Optional per-row `dots` tint the discipline card. */
+/* ------------------------------------------------------------------ */
+
+function SalaryBreakdown({
+  title,
+  slices,
+  dots,
+  emptyHint = "Not enough disclosed pay yet.",
+}: {
+  title: string;
+  slices: SalarySlice[];
+  /** Optional Tailwind bg-* dot classes, index-aligned to `slices`. */
+  dots?: string[];
+  emptyHint?: string;
+}) {
+  const shown = slices
+    .map((slice, i) => ({ slice, dot: dots?.[i] }))
+    .filter(({ slice }) => !slice.na);
+  const maxMedian = Math.max(1, ...shown.map(({ slice }) => slice.median));
+
+  return (
+    <section aria-label={title}>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-white/45">
+        {title}
+      </h3>
+      <div className="dod-glass dod-glass--silver mt-3 rounded-2xl p-4 sm:p-5">
+        {shown.length > 0 ? (
+          <ul className="flex flex-col gap-3.5">
+            {shown.map(({ slice, dot }) => {
+              const pct = Math.round((slice.median / maxMedian) * 100);
+              return (
+                <li key={slice.label}>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-white/80">
+                      {dot && (
+                        <span
+                          className={clsx("h-2 w-2 shrink-0 rounded-full", dot)}
+                        />
+                      )}
+                      {slice.label}
+                      <span className="tabular-nums text-white/40">
+                        ({slice.count})
+                      </span>
+                    </span>
+                    <span
+                      className="font-semibold tabular-nums text-white"
+                      title={`p25 ${formatPay(slice.p25)} · p75 ${formatPay(
+                        slice.p75
+                      )}`}
+                    >
+                      {formatPay(slice.median)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400/80 to-teal-400/80"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-white/50">{emptyHint}</p>
+        )}
+      </div>
+    </section>
   );
 }

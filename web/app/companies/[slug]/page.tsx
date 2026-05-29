@@ -10,6 +10,7 @@ import { SalaryChip, TopBadge } from "@/components/tracker-ui";
 import { buildCompanies, getCompanyBySlug } from "@/lib/companies";
 import { jobSlug, postedAgo, sourceLabel } from "@/lib/jobs";
 import { loadAllJobs } from "@/lib/jobs-data";
+import { ogImageUrl } from "@/lib/og";
 import type { Discipline } from "@/lib/types";
 
 /**
@@ -50,6 +51,17 @@ export async function generateMetadata({
   } and apply.`;
   const canonical = `/companies/${company.slug}`;
 
+  // Dynamic share card: company name + role count, tinted by its lead discipline.
+  const ogImage = ogImageUrl({
+    kind: "company",
+    title: company.name,
+    subtitle: `${roles.toLocaleString("en-IN")} design ${
+      roles === 1 ? "role" : "roles"
+    }`,
+    tag: "India design jobs",
+    hue: company.disciplines[0] ?? undefined,
+  });
+
   return {
     // `absolute` so the root layout's "%s · DOD" template doesn't double the suffix.
     title: { absolute: titleText },
@@ -62,11 +74,13 @@ export async function generateMetadata({
       url: canonical,
       siteName: "DOD",
       locale: "en_IN",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: company.name }],
     },
     twitter: {
       card: "summary_large_image",
       title: titleText,
       description,
+      images: [ogImage],
     },
   };
 }

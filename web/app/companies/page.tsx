@@ -3,6 +3,14 @@ import { CompanyDirectory } from "@/components/CompanyDirectory";
 import { PageNav } from "@/components/PageNav";
 import { buildCompanies } from "@/lib/companies";
 import { loadAllJobs } from "@/lib/jobs-data";
+import { ogImageUrl } from "@/lib/og";
+
+const OG_IMAGE = ogImageUrl({
+  kind: "site",
+  title: "Companies hiring designers in India",
+  subtitle: "Deduped by company, with open-role counts",
+  tag: "India design jobs",
+});
 
 /**
  * Company directory (server, SSG) — every company hiring on DOD, deduped to a
@@ -26,12 +34,14 @@ export const metadata: Metadata = {
     url: "/companies",
     siteName: "DOD",
     locale: "en_IN",
+    images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Companies hiring designers in India · DOD",
     description:
       "Every company hiring designers in India, deduped with open-role counts — on DOD.",
+    images: [OG_IMAGE],
   },
 };
 
