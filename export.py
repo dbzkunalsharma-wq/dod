@@ -1,14 +1,19 @@
 """Export the current jobs in the DB to web/public/jobs.json (the feed the web app reads)."""
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 import db
 
 OUT = Path(__file__).parent / "web" / "public" / "jobs.json"
+HIST = Path(__file__).parent / "web" / "public" / "stats-history.json"
 FIELDS = ("id", "source", "discipline", "title", "company", "location",
           "url", "contact", "posted_at", "logo", "salary", "seen_at")
+
+# Keep ~4 months of daily snapshots for the Insights source-health view.
+HISTORY_DAYS = 120
 
 # Mirror poll.py's freshness gate at export time: a job already sitting in the DB is
 # dropped from the public feed once its posted_at is parseable AND older than this.
@@ -40,6 +45,31 @@ def _is_stale(value, now) -> bool:
     return (now - dt).days > MAX_AGE_DAYS
 
 
+def _update_history(jobs, now) -> int:
+    """Append today's per-source / per-discipline counts to stats-history.json
+    (upserting if today already has an entry) so the web Insights page can show
+    source health + volume over time. Keeps the last HISTORY_DAYS snapshots."""
+    today = now.date().isoformat()
+    entry = {
+        "date": today,
+        "total": len(jobs),
+        "per_source": dict(Counter(j["source"] for j in jobs)),
+        "per_discipline": dict(Counter(j["discipline"] for j in jobs)),
+    }
+    try:
+        hist = json.loads(HIST.read_text(encoding="utf-8"))
+        if not isinstance(hist, list):
+            hist = []
+    except (FileNotFoundError, ValueError):
+        hist = []
+    hist = [h for h in hist if h.get("date") != today]  # upsert today's snapshot
+    hist.append(entry)
+    hist.sort(key=lambda h: h.get("date", ""))
+    hist = hist[-HISTORY_DAYS:]
+    HIST.write_text(json.dumps(hist, ensure_ascii=False), encoding="utf-8")
+    return len(hist)
+
+
 def main():
     rows = db.recent_jobs(limit=5000)
     now = datetime.now(timezone.utc)
@@ -59,7 +89,9 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    print(f"wrote {len(jobs)} jobs to {OUT} (dropped {dropped} stale >{MAX_AGE_DAYS}d)")
+    days = _update_history(jobs, now)
+    print(f"wrote {len(jobs)} jobs to {OUT} (dropped {dropped} stale >{MAX_AGE_DAYS}d); "
+          f"stats-history now {days} day(s)")
 
 
 if __name__ == "__main__":

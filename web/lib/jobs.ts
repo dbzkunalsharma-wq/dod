@@ -461,7 +461,7 @@ export const TOP_COMPANIES: string[] = [
  * "Razorpay Software Pvt Ltd" → "razorpay" and "Walmart Global Tech India" →
  * "walmart tech". Returns the cleaned token list (whitespace-joined too).
  */
-function normalizeCompany(company: string): string {
+export function normalizeCompany(company: string): string {
   const skip = new Set([
     "pvt",
     "private",

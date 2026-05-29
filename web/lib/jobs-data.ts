@@ -2,7 +2,7 @@ import { cache } from "react";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { jobSlug } from "./jobs";
-import type { Job, JobsFeed } from "./types";
+import type { Job, JobsFeed, StatsSnapshot } from "./types";
 
 /**
  * Server-only loader for the jobs feed.
@@ -18,6 +18,11 @@ import type { Job, JobsFeed } from "./types";
  */
 
 const JOBS_PATH = path.join(process.cwd(), "public", "jobs.json");
+const STATS_HISTORY_PATH = path.join(
+  process.cwd(),
+  "public",
+  "stats-history.json"
+);
 
 export const loadJobsFeed = cache(async (): Promise<JobsFeed> => {
   const raw = await fs.readFile(JOBS_PATH, "utf8");
@@ -41,3 +46,18 @@ export async function getJobBySlug(slug: string): Promise<Job | null> {
   const jobs = await loadAllJobs();
   return jobs.find((j) => jobSlug(j.id) === slug) ?? null;
 }
+
+/**
+ * The daily stats history (public/stats-history.json) — an array of snapshots,
+ * one per day. Returns `[]` if the file is missing or malformed, so the
+ * insights page degrades gracefully. Wrapped in `cache()` like the feed.
+ */
+export const loadStatsHistory = cache(async (): Promise<StatsSnapshot[]> => {
+  try {
+    const raw = await fs.readFile(STATS_HISTORY_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as StatsSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+});

@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
+import { companySlug } from "@/lib/companies";
 import { DISCIPLINE_MAP, isNew, jobSlug, postedAgo, sourceLabel } from "@/lib/jobs";
 import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
@@ -178,11 +179,22 @@ export function JobDetailModal({
               >
                 {job.title}
               </h2>
-              {job.company && (
-                <p className="mt-1 text-sm font-medium text-white/75">
-                  {job.company}
-                </p>
-              )}
+              {job.company &&
+                (() => {
+                  const cSlug = companySlug(job.company);
+                  return cSlug ? (
+                    <Link
+                      href={`/companies/${cSlug}`}
+                      className="mt-1 inline-block text-sm font-medium text-white/75 underline-offset-2 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:rounded"
+                    >
+                      {job.company}
+                    </Link>
+                  ) : (
+                    <p className="mt-1 text-sm font-medium text-white/75">
+                      {job.company}
+                    </p>
+                  );
+                })()}
             </div>
             <SaveButton
               saved={isSaved(job.id)}

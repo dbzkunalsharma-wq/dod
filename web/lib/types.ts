@@ -41,3 +41,12 @@ export interface JobsFeed {
   count: number;
   jobs: Job[];
 }
+
+/** One daily snapshot row in public/stats-history.json. */
+export interface StatsSnapshot {
+  /** "YYYY-MM-DD" */
+  date: string;
+  total: number;
+  per_source: Record<string, number>;
+  per_discipline: Record<string, number>;
+}

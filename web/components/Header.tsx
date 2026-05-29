@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRelativeTime } from "@/lib/useRelativeTime";
 
 export function Header({
@@ -41,24 +42,43 @@ export function Header({
           </p>
         </div>
 
-        <div className="flex flex-col items-start gap-1.5 sm:items-end">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--silver-line)] bg-white/[0.06] px-3 py-1.5 text-sm backdrop-blur-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="dod-live-dot absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            <span className="font-semibold tabular-nums text-white">
-              {loading ? "—" : total.toLocaleString("en-IN")}
-            </span>
-            <span className="text-white/55">open roles</span>
+        <div className="flex flex-col items-start gap-2.5 sm:items-end">
+          <nav
+            aria-label="Sections"
+            className="flex items-center gap-1.5 text-sm"
+          >
+            <Link
+              href="/companies"
+              className="rounded-full border border-[var(--silver-line)] bg-white/[0.04] px-3 py-1.5 font-medium text-white/60 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            >
+              Companies
+            </Link>
+            <Link
+              href="/insights"
+              className="rounded-full border border-[var(--silver-line)] bg-white/[0.04] px-3 py-1.5 font-medium text-white/60 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            >
+              Insights
+            </Link>
+          </nav>
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--silver-line)] bg-white/[0.06] px-3 py-1.5 text-sm backdrop-blur-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="dod-live-dot absolute inline-flex h-full w-full rounded-full bg-emerald-400" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+              <span className="font-semibold tabular-nums text-white">
+                {loading ? "—" : total.toLocaleString("en-IN")}
+              </span>
+              <span className="text-white/55">open roles</span>
+            </div>
+            <p className="text-xs text-white/45">
+              {loading
+                ? "Loading…"
+                : updated
+                  ? `Updated ${updated}`
+                  : "Live feed"}
+            </p>
           </div>
-          <p className="text-xs text-white/45">
-            {loading
-              ? "Loading…"
-              : updated
-                ? `Updated ${updated}`
-                : "Live feed"}
-          </p>
         </div>
       </div>
     </header>

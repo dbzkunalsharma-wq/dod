@@ -42,6 +42,7 @@ import { SegmentedControl } from "./SegmentedControl";
 import { SiteFooter } from "./SiteFooter";
 import { SkeletonGrid } from "./SkeletonCard";
 import { SourceFilter } from "./SourceFilter";
+import { StatsStrip } from "./StatsStrip";
 
 const DISCIPLINE_KEYS: Discipline[] = [
   "uiux",
@@ -448,6 +449,10 @@ function JobsBoardInner() {
           loading={loading}
         />
 
+        {/* additive: a thin stats strip linking to /insights (does not disturb
+            the hero discipline cards / filters below) */}
+        {!loading && state !== "error" && <StatsStrip jobs={allJobs} />}
+
         {/* centerpiece: gradient discipline filter cards */}
         <div className="mt-8">
           <SegmentedControl
@@ -540,7 +545,7 @@ function JobsBoardInner() {
 
         {/* featured companies strip — top companies currently in the feed */}
         {!loading && state !== "error" && (
-          <FeaturedCompanies jobs={topJobs} onPick={(name) => f.setSearch(name)} />
+          <FeaturedCompanies jobs={topJobs} />
         )}
 
         {/* active-filters summary */}

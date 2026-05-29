@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import Link from "next/link";
+import { companySlug } from "@/lib/companies";
 import {
   contactHref,
   DISCIPLINE_MAP,
@@ -113,9 +114,23 @@ export function JobCard({
         {job.title}
       </h2>
 
-      {job.company && (
-        <p className="mt-1 text-sm font-medium text-white/70">{job.company}</p>
-      )}
+      {job.company &&
+        (() => {
+          const cSlug = companySlug(job.company);
+          return cSlug ? (
+            <Link
+              href={`/companies/${cSlug}`}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 inline-block text-sm font-medium text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:rounded"
+            >
+              {job.company}
+            </Link>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-white/70">
+              {job.company}
+            </p>
+          );
+        })()}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/55">
         {job.location && (
