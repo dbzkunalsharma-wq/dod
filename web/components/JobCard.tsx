@@ -6,6 +6,7 @@ import {
   contactHref,
   DISCIPLINE_MAP,
   isNew,
+  jobSlug,
   postedAgo,
   sourceLabel,
   topCompanyName,
@@ -204,7 +205,7 @@ export function JobCard({
         {/* additive: open the full crawlable detail page (the card click still
             opens the quick-view modal). stopPropagation so it doesn't fire that. */}
         <Link
-          href={`/jobs/${encodeURIComponent(job.id)}`}
+          href={`/jobs/${jobSlug(job.id)}`}
           onClick={(e) => e.stopPropagation()}
           className={clsx(
             "inline-flex shrink-0 items-center justify-center gap-1 rounded-xl border border-[var(--silver-line)] bg-white/[0.04] px-3 py-2.5 text-sm font-medium text-white/65",

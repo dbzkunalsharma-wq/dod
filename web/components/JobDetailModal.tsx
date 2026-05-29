@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
-import { DISCIPLINE_MAP, isNew, postedAgo, sourceLabel } from "@/lib/jobs";
+import { DISCIPLINE_MAP, isNew, jobSlug, postedAgo, sourceLabel } from "@/lib/jobs";
 import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
 import { useTracker } from "@/lib/useTracker";
@@ -272,7 +272,7 @@ export function JobDetailModal({
           </a>
           {/* additive: a permanent, crawlable detail page for this role */}
           <Link
-            href={`/jobs/${encodeURIComponent(job.id)}`}
+            href={`/jobs/${jobSlug(job.id)}`}
             className={clsx(
               "inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200",
               "border-white/10 bg-white/[0.06] text-white/75 hover:border-white/25 hover:bg-white/[0.12] hover:text-white",

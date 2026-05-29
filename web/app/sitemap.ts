@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
+import { jobSlug } from "@/lib/jobs";
 import { loadAllJobs } from "@/lib/jobs-data";
 
 const BASE_URL = "https://dodlovestowork.vercel.app";
 
 /**
- * Sitemap — the board home plus one entry per job. Job ids contain a colon
- * ("linkedin:12345") so each URL encodes the id with `encodeURIComponent`,
- * matching the statically-generated `/jobs/[id]` segments and the in-app
- * hrefs. `lastModified` uses the role's effective date when available.
+ * Sitemap — the board home plus one entry per job. Each URL uses the colon-free
+ * `jobSlug` (":" → "~"), matching the statically-generated `/jobs/[id]` segments
+ * and the in-app hrefs. `lastModified` uses the role's effective date when known.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const jobs = await loadAllJobs();
@@ -16,7 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const stamp = job.posted_at ?? job.seen_at;
     const lastModified = stamp ? new Date(stamp.replace(" ", "T")) : undefined;
     return {
-      url: `${BASE_URL}/jobs/${encodeURIComponent(job.id)}`,
+      url: `${BASE_URL}/jobs/${jobSlug(job.id)}`,
       lastModified:
         lastModified && !Number.isNaN(lastModified.getTime())
           ? lastModified

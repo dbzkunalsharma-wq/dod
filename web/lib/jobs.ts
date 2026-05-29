@@ -138,6 +138,18 @@ export function sourceLabel(source: string): string {
   return (SOURCE_LABELS as Record<string, string>)[source] ?? source;
 }
 
+/**
+ * URL/route slug for a job id. Job ids contain colons ("linkedin:12345"), which
+ * are an illegal filename char on Windows (breaking the static build) and get
+ * percent-encoded in URLs (which then don't match the prerendered segment, → 404).
+ * We map ":" → "~" — an RFC-3986 *unreserved* char, so it's never percent-encoded
+ * and is a legal filename on every OS. No id contains "~", so the map is exact.
+ * Used by every per-job href, canonical, sitemap entry, and generateStaticParams.
+ */
+export function jobSlug(id: string): string {
+  return id.replace(/:/g, "~");
+}
+
 /* ------------------------------------------------------------------ */
 /*  Date helpers                                                       */
 /* ------------------------------------------------------------------ */

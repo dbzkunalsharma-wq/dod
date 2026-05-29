@@ -10,11 +10,12 @@ import {
   DISCIPLINE_MAP,
   EXPERIENCE_LABELS,
   experienceLevel,
+  jobSlug,
   postedAgo,
   sourceLabel,
   topCompanyName,
 } from "@/lib/jobs";
-import { getJobById, loadAllJobs } from "@/lib/jobs-data";
+import { getJobBySlug, loadAllJobs } from "@/lib/jobs-data";
 import type { Job } from "@/lib/types";
 
 /**
@@ -23,28 +24,26 @@ import type { Job } from "@/lib/types";
  * glass theme + the same building blocks (avatar, discipline badge, salary
  * chip, Top badge) so it reads as part of the same product.
  *
- * Job ids contain a colon ("linkedin:12345"), so hrefs encode the id with
- * `encodeURIComponent` and we decode the route param here. Every id is
- * pre-listed by `generateStaticParams`, and unknown ids 404 via `notFound()`.
+ * Job ids contain a colon ("linkedin:12345"); we route on a colon-free slug
+ * (`jobSlug`, ":" → "~") so the URL needs no percent-encoding and the segment is
+ * a legal filename on every OS. Every job is pre-listed by `generateStaticParams`,
+ * and unknown slugs 404 via `notFound()`.
  */
 
-// Keep dynamicParams enabled (the default): every known id is prerendered via
-// generateStaticParams, and any other id is resolved on-demand where the page
-// itself calls notFound() (so unknown ids still 404). This also sidesteps a
-// dev-only routing quirk where a `dynamicParams = false` match on colon-bearing
-// ids 404s because the decoded incoming param doesn't equal the encoded value.
+// Keep dynamicParams enabled (the default): every known job is prerendered via
+// generateStaticParams; any unknown slug renders on-demand and the page calls
+// notFound(), so stale/removed ids still 404 cleanly.
 export const dynamicParams = true;
 
 type Params = { id: string };
 
 export async function generateStaticParams(): Promise<Params[]> {
   const jobs = await loadAllJobs();
-  // Ids contain a colon ("linkedin:12345"). We return the *encoded* id so the
-  // prerendered segment is a filesystem-safe name (`linkedin%3A12345`) — a raw
-  // colon is an illegal filename char on Windows and breaks the build. Hrefs
-  // are built with the same `encodeURIComponent`, and the page decodes the
-  // param before lookup, so the round-trip is consistent.
-  return jobs.map((job) => ({ id: encodeURIComponent(job.id) }));
+  // Route on a colon-free slug (jobSlug: ":" → "~"). A raw colon is an illegal
+  // filename char on Windows (breaks the build) and percent-encodes in URLs (so
+  // the request never matches the prerendered segment → 404). "~" is unreserved:
+  // never encoded, legal on every OS. Hrefs/canonical/sitemap use the same slug.
+  return jobs.map((job) => ({ id: jobSlug(job.id) }));
 }
 
 /** Trim a description down to a clean ~160-char meta/OG snippet. */
@@ -65,7 +64,7 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const job = await getJobById(decodeURIComponent(id));
+  const job = await getJobBySlug(decodeURIComponent(id));
   if (!job) {
     return { title: "Role not found" };
   }
@@ -73,7 +72,7 @@ export async function generateMetadata({
   const company = job.company?.trim();
   const title = company ? `${job.title} at ${company}` : job.title;
   const description = metaDescription(job);
-  const canonical = `/jobs/${encodeURIComponent(job.id)}`;
+  const canonical = `/jobs/${jobSlug(job.id)}`;
 
   return {
     title,
@@ -101,7 +100,7 @@ export default async function JobPage({
   params: Promise<Params>;
 }) {
   const { id } = await params;
-  const job = await getJobById(decodeURIComponent(id));
+  const job = await getJobBySlug(decodeURIComponent(id));
   if (!job) notFound();
 
   const topName = topCompanyName(job.company);

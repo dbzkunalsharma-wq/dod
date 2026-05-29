@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { jobSlug } from "./jobs";
 import type { Job, JobsFeed } from "./types";
 
 /**
@@ -33,4 +34,10 @@ export const loadAllJobs = cache(async (): Promise<Job[]> => {
 export async function getJobById(id: string): Promise<Job | null> {
   const jobs = await loadAllJobs();
   return jobs.find((j) => j.id === id) ?? null;
+}
+
+/** Look up a single job by its URL slug (jobSlug: ":" → "~"), or null if absent. */
+export async function getJobBySlug(slug: string): Promise<Job | null> {
+  const jobs = await loadAllJobs();
+  return jobs.find((j) => jobSlug(j.id) === slug) ?? null;
 }
