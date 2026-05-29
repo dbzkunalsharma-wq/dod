@@ -20,8 +20,16 @@ export function Header({
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="bg-gradient-to-br from-white via-violet-200 to-indigo-300 bg-clip-text font-mono text-3xl font-bold tracking-tight text-transparent sm:text-4xl">
-              DOD
+            <h1 className="flex items-center" aria-label="DOD">
+              <svg viewBox="0 0 100 100" role="img" aria-hidden="true" className="h-10 w-10 sm:h-11 sm:w-11">
+                <rect width="100" height="100" rx="22" fill="#ffffff" />
+                <rect x="22" y="24" width="15" height="40" fill="none" stroke="#0a0a0b" strokeWidth="5" />
+                <rect x="41.5" y="24" width="6" height="40" fill="#0a0a0b" />
+                <circle cx="71" cy="34" r="12.5" fill="#0a0a0b" />
+                <rect x="57" y="53" width="21" height="21" fill="none" stroke="#0a0a0b" strokeWidth="5" />
+                <rect x="67" y="63" width="11" height="11" fill="#0a0a0b" />
+              </svg>
+              <span className="sr-only">DOD</span>
             </h1>
             <span className="hidden h-6 w-px bg-white/15 sm:block" />
             <p className="hidden text-sm text-white/60 sm:block">
