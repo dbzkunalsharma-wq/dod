@@ -13,6 +13,7 @@ Public contract:
 
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from bs4 import BeautifulSoup
@@ -76,6 +77,30 @@ def _stipend(card) -> str | None:
     return s or None
 
 
+def _posted_at(card) -> str | None:
+    """Convert Internshala's relative 'Posted X ago' label to an ISO date.
+
+    Cards never show an absolute date, only e.g. 'Posted 3 weeks ago'. We anchor on
+    'posted ... ago' (falling back to the first relative-time mention) and subtract
+    from now, so the feed shows the REAL posting age instead of falling back to the
+    scrape time (which made 3-week-old posts read as '6h ago').
+    """
+    low = card.get_text(" ", strip=True).lower()
+    now = datetime.now(timezone.utc)
+    m = re.search(r"posted\s+(\d+)\s*(hour|day|week|month|year)s?\s*ago", low)
+    if not m:
+        if re.search(r"posted\s+(?:just now|today)", low):
+            return now.date().isoformat()
+        if re.search(r"posted\s+yesterday", low):
+            return (now - timedelta(days=1)).date().isoformat()
+        m = re.search(r"(\d+)\s*(hour|day|week|month|year)s?\s*ago", low)
+    if not m:
+        return None
+    n = int(m.group(1))
+    days = {"hour": n / 24.0, "day": n, "week": n * 7, "month": n * 30, "year": n * 365}[m.group(2)]
+    return (now - timedelta(days=days)).date().isoformat()
+
+
 def _to_job(card) -> dict | None:
     ext_id = card.get("internshipid")
     title_el = card.select_one(".job-internship-name")
@@ -112,7 +137,7 @@ def _to_job(card) -> dict | None:
         "url": url,
         "logo": logo,
         "contact": None,
-        "posted_at": None,  # cards show only relative dates ("2 days ago"), not an ISO date
+        "posted_at": _posted_at(card),
         "salary": _stipend(card),
         "description": _strip(card),
     }
