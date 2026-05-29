@@ -404,8 +404,8 @@ function JobsBoardInner() {
           />
         </div>
 
-        {/* sticky glass filter bar */}
-        <div className="sticky top-3 z-20 mt-5">
+        {/* glass filter bar (scrolls away with the page) */}
+        <div className="mt-5">
           <div className="dod-glass dod-glass--silver rounded-2xl p-3 sm:p-4">
             <div className="flex flex-col gap-3">
               {/* search + location + sort */}
