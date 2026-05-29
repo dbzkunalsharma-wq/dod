@@ -306,10 +306,15 @@ export function LocationFilterSelect({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Sort control — Newest / Highest salary / Company A–Z               */
+/*  Sort control — Top picks (default) / Newest / Highest salary /     */
+/*  Company A–Z. "Top picks" leads as the deterministic composite sort. */
 /* ------------------------------------------------------------------ */
 
+// Order here is the option order in the dropdown — "top" is first (default).
+// A leading ✨ glyph flags "Top picks" right inside the native <option> (the
+// most reliable way to decorate a native select across browsers).
 const SORT_LABELS: Record<SortMode, string> = {
+  top: "✨ Top picks",
   newest: "Newest",
   salary: "Highest salary",
   company: "Company A–Z",

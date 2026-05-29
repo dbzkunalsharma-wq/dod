@@ -539,6 +539,109 @@ export function isTopCompany(company: string | null): boolean {
   return topCompanyName(company) !== null;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Reputation tier + "Top picks" composite ranking (deterministic)    */
+/*                                                                     */
+/*  A curated *elite* subset of the most prestigious names sits above  */
+/*  the broader top-companies list, giving the default "Top picks" sort */
+/*  a two-level reputation signal. Matching reuses the SAME company     */
+/*  normalisation as `isTopCompany` (lowercase, suffix-stripped, then   */
+/*  exact-equality on the cleaned name) so e.g. "Google India Pvt Ltd"  */
+/*  → elite, while "Metadata" never masquerades as Meta.               */
+/* ------------------------------------------------------------------ */
+
+/** Canonical display names for the most prestigious "elite" companies. */
+const ELITE_COMPANY_NAMES: string[] = [
+  "Google",
+  "Microsoft",
+  "Apple",
+  "Adobe",
+  "Amazon",
+  "Meta",
+  "Netflix",
+  "Figma",
+  "Stripe",
+  "Atlassian",
+  "Uber",
+  "Airbnb",
+  "Spotify",
+  "Salesforce",
+  "Nvidia",
+  "Razorpay",
+  "CRED",
+  "Swiggy",
+  "Zomato",
+  "Flipkart",
+  "PhonePe",
+  "Zerodha",
+  "Postman",
+];
+
+/**
+ * Normalised (cleaned) tokens for the elite companies — built once with the
+ * SAME `normalizeCompany` used for top-company matching, so membership tests
+ * line up exactly with `isTopCompany`'s view of a name.
+ */
+export const ELITE_COMPANIES: Set<string> = new Set(
+  ELITE_COMPANY_NAMES.map((n) => normalizeCompany(n)).filter(Boolean)
+);
+
+/**
+ * Reputation tier for a company (higher = more prestigious):
+ *   2 → elite (in `ELITE_COMPANIES`, matched on the normalised name),
+ *   1 → a curated top company that isn't elite (`isTopCompany`),
+ *   0 → everything else (incl. null / nameless).
+ */
+export function reputationTier(company: string | null): number {
+  if (!company) return 0;
+  const cleaned = normalizeCompany(company);
+  if (cleaned && ELITE_COMPANIES.has(cleaned)) return 2;
+  return isTopCompany(company) ? 1 : 0;
+}
+
+/**
+ * Whether a role is "recent" — its effective time (posted_at ?? seen_at) is
+ * within the last `days` (default 30) of `Date.now()`. Unparseable / future
+ * timestamps are not recent. Deterministic given a fixed clock.
+ */
+export function isRecentJob(job: Job, days = 30): boolean {
+  const t = effectiveTime(job);
+  if (t === 0) return false;
+  const diff = Date.now() - t;
+  return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * "Top picks" composite comparator (negative ⇒ `a` ranks first). A pure,
+ * deterministic ordering — no ML, no randomness — applying these tiers in
+ * strict priority:
+ *
+ *   1. Recent top-company first: rt(x) = isTopCompany(x.company) && isRecentJob(x).
+ *      A fresh role at a respected company is the headline pick.
+ *   2. Company reputation: higher `reputationTier` first (elite > top > rest).
+ *   3. Pay: higher `salaryValue(x.salary)` first (no/zero salary sinks).
+ *   4. Recency: newer `effectiveTime` first.
+ */
+export function compareTopPicks(a: Job, b: Job): number {
+  // (1) Recent top-company roles float to the very top.
+  const rtA = isTopCompany(a.company) && isRecentJob(a);
+  const rtB = isTopCompany(b.company) && isRecentJob(b);
+  if (rtA !== rtB) return rtA ? -1 : 1;
+
+  // (2) Company reputation (elite > top > rest).
+  const repA = reputationTier(a.company);
+  const repB = reputationTier(b.company);
+  if (repA !== repB) return repB - repA;
+
+  // (3) Pay (higher first; zero/unparseable sinks).
+  const sa = salaryValue(a.salary);
+  const sb = salaryValue(b.salary);
+  if (sa !== sb) return sb - sa;
+
+  // (4) Recency (newer first).
+  return effectiveTime(b) - effectiveTime(a);
+}
+
 /**
  * Resolve a `contact` string to a clickable href: emails → `mailto:`,
  * Telegram handles (`@name`) → t.me link. Returns null for free-text

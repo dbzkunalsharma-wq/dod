@@ -29,7 +29,7 @@ import type { JobStatus } from "./useTracker";
  *   fresher=1                                  fresher-friendly toggle
  *   salary=1                                   has-salary-only toggle
  *   top=1                                      top-companies-only toggle
- *   sort=salary|company                        sort mode (default "newest")
+ *   sort=newest|salary|company                  sort mode (default "top")
  *   view=saved                                 saved-only view
  *   status=interested|applied|rejected         status filter
  *   job=<id>                                   open this job's detail modal
@@ -42,7 +42,7 @@ export type DisciplineFilter = "all" | Discipline;
 export type StatusFilter = "all" | Exclude<JobStatus, "none">;
 export type LocationFilter = "all" | LocationKey;
 export type WorkModeFilter = "all" | WorkMode;
-export type SortMode = "newest" | "salary" | "company";
+export type SortMode = "top" | "newest" | "salary" | "company";
 
 const DISCIPLINE_VALUES: Discipline[] = [
   "uiux",
@@ -77,7 +77,7 @@ const WORK_MODE_VALUES: WorkMode[] = [
   "internship",
 ];
 
-const SORT_VALUES: SortMode[] = ["newest", "salary", "company"];
+const SORT_VALUES: SortMode[] = ["top", "newest", "salary", "company"];
 
 export interface FilterState {
   discipline: DisciplineFilter;
@@ -136,7 +136,7 @@ function parseInitial(params: URLSearchParams): FilterState {
   const sort: SortMode =
     sortRaw && (SORT_VALUES as string[]).includes(sortRaw)
       ? (sortRaw as SortMode)
-      : "newest";
+      : "top";
 
   return {
     discipline,
@@ -173,7 +173,7 @@ function toQueryString(s: FilterState, job: string | null): string {
   if (s.topOnly) p.set("top", "1");
   if (s.savedOnly) p.set("view", "saved");
   if (s.status !== "all") p.set("status", s.status);
-  if (s.sort !== "newest") p.set("sort", s.sort);
+  if (s.sort !== "top") p.set("sort", s.sort);
   if (job) p.set("job", job);
   return p.toString();
 }
@@ -213,7 +213,7 @@ const DEFAULT: FilterState = {
   topOnly: false,
   savedOnly: false,
   status: "all",
-  sort: "newest",
+  sort: "top",
 };
 
 export function useFilterState(): FilterApi {

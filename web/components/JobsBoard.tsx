@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
+  compareTopPicks,
   effectiveTime,
   hasSalary as jobHasSalary,
   isFresherFriendly,
@@ -67,6 +68,11 @@ function emptyDisciplineCounts(): Record<Discipline, number> {
 
 /** Compare for the active sort mode. */
 function compareBySort(a: Job, b: Job, sort: string): number {
+  if (sort === "top") {
+    // "Top picks" — deterministic composite (recent-top-company → reputation
+    // → pay → recency). See compareTopPicks in lib/jobs.
+    return compareTopPicks(a, b);
+  }
   if (sort === "salary") {
     // Highest salary first; unparseable (0) sinks. Tie-break by recency.
     const sa = salaryValue(a.salary);
