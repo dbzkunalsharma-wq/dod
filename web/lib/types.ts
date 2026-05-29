@@ -13,7 +13,8 @@ export type Source =
   | "shine"
   | "dribbble"
   | "behance"
-  | "apna";
+  | "apna"
+  | "freshersworld";
 
 export interface Job {
   id: string;

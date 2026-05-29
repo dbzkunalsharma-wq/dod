@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Discipline, Source } from "./types";
-import type { LocationKey, WorkMode } from "./jobs";
+import type { ExperienceLevel, LocationKey, WorkMode } from "./jobs";
 import type { JobStatus } from "./useTracker";
 
 /**
@@ -29,6 +29,8 @@ import type { JobStatus } from "./useTracker";
  *   fresher=1                                  fresher-friendly toggle
  *   salary=1                                   has-salary-only toggle
  *   top=1                                      top-companies-only toggle
+ *   posted=24h|7d|30d                          date-posted window (default "any")
+ *   exp=intern,entry,mid,senior                experience levels (CSV)
  *   sort=newest|salary|company                  sort mode (default "top")
  *   view=saved                                 saved-only view
  *   status=interested|applied|rejected         status filter
@@ -43,6 +45,15 @@ export type StatusFilter = "all" | Exclude<JobStatus, "none">;
 export type LocationFilter = "all" | LocationKey;
 export type WorkModeFilter = "all" | WorkMode;
 export type SortMode = "top" | "newest" | "salary" | "company";
+/** Date-posted window. "any" (default) imposes no recency bound. */
+export type DateFilter = "any" | "24h" | "7d" | "30d";
+
+/** Days each non-"any" date window spans (used for the window math). */
+export const DATE_FILTER_DAYS: Record<Exclude<DateFilter, "any">, number> = {
+  "24h": 1,
+  "7d": 7,
+  "30d": 30,
+};
 
 const DISCIPLINE_VALUES: Discipline[] = [
   "uiux",
@@ -79,6 +90,15 @@ const WORK_MODE_VALUES: WorkMode[] = [
 
 const SORT_VALUES: SortMode[] = ["top", "newest", "salary", "company"];
 
+const DATE_VALUES: DateFilter[] = ["any", "24h", "7d", "30d"];
+
+const EXPERIENCE_VALUES: ExperienceLevel[] = [
+  "intern",
+  "entry",
+  "mid",
+  "senior",
+];
+
 export interface FilterState {
   discipline: DisciplineFilter;
   search: string;
@@ -91,6 +111,10 @@ export interface FilterState {
   savedOnly: boolean;
   status: StatusFilter;
   sort: SortMode;
+  /** Date-posted recency window (default "any"). */
+  datePosted: DateFilter;
+  /** Selected experience levels (multi-select facet; empty = any). */
+  experience: Set<ExperienceLevel>;
 }
 
 function parseInitial(params: URLSearchParams): FilterState {
@@ -138,6 +162,24 @@ function parseInitial(params: URLSearchParams): FilterState {
       ? (sortRaw as SortMode)
       : "top";
 
+  const postedRaw = params.get("posted");
+  const datePosted: DateFilter =
+    postedRaw && (DATE_VALUES as string[]).includes(postedRaw)
+      ? (postedRaw as DateFilter)
+      : "any";
+
+  const expRaw = params.get("exp");
+  const experience = new Set<ExperienceLevel>(
+    expRaw
+      ? (expRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) =>
+            (EXPERIENCE_VALUES as string[]).includes(s)
+          ) as ExperienceLevel[])
+      : []
+  );
+
   return {
     discipline,
     search: params.get("q") ?? "",
@@ -150,6 +192,8 @@ function parseInitial(params: URLSearchParams): FilterState {
     savedOnly: params.get("view") === "saved",
     status,
     sort,
+    datePosted,
+    experience,
   };
 }
 
@@ -171,6 +215,14 @@ function toQueryString(s: FilterState, job: string | null): string {
   if (s.fresherOnly) p.set("fresher", "1");
   if (s.hasSalaryOnly) p.set("salary", "1");
   if (s.topOnly) p.set("top", "1");
+  if (s.datePosted !== "any") p.set("posted", s.datePosted);
+  if (s.experience.size > 0) {
+    // Stable, deterministic order so the same view → the same URL.
+    p.set(
+      "exp",
+      EXPERIENCE_VALUES.filter((e) => s.experience.has(e)).join(",")
+    );
+  }
   if (s.savedOnly) p.set("view", "saved");
   if (s.status !== "all") p.set("status", s.status);
   if (s.sort !== "top") p.set("sort", s.sort);
@@ -191,6 +243,9 @@ export interface FilterApi extends FilterState {
   setSavedOnly: (v: boolean) => void;
   setStatus: (s: StatusFilter) => void;
   setSort: (s: SortMode) => void;
+  setDatePosted: (d: DateFilter) => void;
+  toggleExperience: (level: ExperienceLevel) => void;
+  clearExperience: () => void;
   reset: () => void;
   /** The job id whose modal is open (from `?job=`), or null. */
   selectedJobId: string | null;
@@ -214,6 +269,8 @@ const DEFAULT: FilterState = {
   savedOnly: false,
   status: "all",
   sort: "top",
+  datePosted: "any",
+  experience: new Set(),
 };
 
 export function useFilterState(): FilterApi {
@@ -306,12 +363,31 @@ export function useFilterState(): FilterApi {
     (sort: SortMode) => setState((s) => ({ ...s, sort })),
     []
   );
+  const setDatePosted = useCallback(
+    (datePosted: DateFilter) => setState((s) => ({ ...s, datePosted })),
+    []
+  );
+  const toggleExperience = useCallback(
+    (level: ExperienceLevel) =>
+      setState((s) => {
+        const experience = new Set(s.experience);
+        if (experience.has(level)) experience.delete(level);
+        else experience.add(level);
+        return { ...s, experience };
+      }),
+    []
+  );
+  const clearExperience = useCallback(
+    () => setState((s) => ({ ...s, experience: new Set() })),
+    []
+  );
   const setSelectedJobId = useCallback(
     (id: string | null) => setSelectedJobIdState(id),
     []
   );
   const reset = useCallback(
-    () => setState({ ...DEFAULT, sources: new Set() }),
+    () =>
+      setState({ ...DEFAULT, sources: new Set(), experience: new Set() }),
     []
   );
 
@@ -325,7 +401,9 @@ export function useFilterState(): FilterApi {
     state.hasSalaryOnly ||
     state.topOnly ||
     state.savedOnly ||
-    state.status !== "all";
+    state.status !== "all" ||
+    state.datePosted !== "any" ||
+    state.experience.size > 0;
 
   return {
     ...state,
@@ -341,6 +419,9 @@ export function useFilterState(): FilterApi {
     setSavedOnly,
     setStatus,
     setSort,
+    setDatePosted,
+    toggleExperience,
+    clearExperience,
     reset,
     selectedJobId,
     setSelectedJobId,

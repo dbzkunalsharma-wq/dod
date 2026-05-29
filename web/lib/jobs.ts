@@ -113,6 +113,7 @@ export const SOURCE_LABELS: Record<Source, string> = {
   dribbble: "Dribbble",
   behance: "Behance",
   apna: "Apna",
+  freshersworld: "Freshersworld",
 };
 
 /** Stable display order for source chips (biggest India sources first). */
@@ -121,6 +122,7 @@ export const SOURCE_ORDER: Source[] = [
   "foundit",
   "unstop",
   "internshala",
+  "freshersworld",
   "apna",
   "shine",
   "behance",
@@ -196,6 +198,18 @@ export function relativeTime(
  *  is just when WE scraped it, and made weeks-old posts read as "6h ago"). */
 export function postedAgo(job: Job, now: number = Date.now()): string {
   return job.posted_at ? relativeTime(job.posted_at, now) : "Recently";
+}
+
+/**
+ * Whether a role's effective date (posted_at ?? seen_at) falls within the last
+ * `days` of `now` — backs the "Date posted" filter. Unparseable / future
+ * timestamps fall outside any window. `now` is injectable for tests.
+ */
+export function withinDays(job: Job, days: number, now: number = Date.now()): boolean {
+  const t = effectiveTime(job);
+  if (t === 0) return false;
+  const diff = now - t;
+  return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000;
 }
 
 /* ------------------------------------------------------------------ */
@@ -769,6 +783,57 @@ export function workType(job: Job): WorkType {
 /** Whether a role is an internship. */
 export function isInternship(job: Job): boolean {
   return workType(job) === "internship";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Experience level — Intern / Entry / Mid / Senior                   */
+/*  Deterministic, title + description driven (no backend, no ML).     */
+/* ------------------------------------------------------------------ */
+
+export type ExperienceLevel = "intern" | "entry" | "mid" | "senior";
+
+export interface ExperienceMeta {
+  key: ExperienceLevel;
+  label: string;
+}
+
+/** Display order for the experience-level chips (junior → senior). */
+export const EXPERIENCE_LEVELS: ExperienceMeta[] = [
+  { key: "intern", label: "Intern" },
+  { key: "entry", label: "Entry" },
+  { key: "mid", label: "Mid" },
+  { key: "senior", label: "Senior" },
+];
+
+export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> =
+  Object.fromEntries(
+    EXPERIENCE_LEVELS.map((e) => [e.key, e.label])
+  ) as Record<ExperienceLevel, string>;
+
+/** Entry-level / early-career signals (junior, fresher, associate, 0–2 yrs…). */
+const ENTRY_RE =
+  /\b(junior|jr|fresher|fresh\s?grad|entry[\s-]?level|associate|graduate|grad|trainee|0\s*[-–]\s*1|0\s*[-–]\s*2|0\s*to\s*[12])\s*(?:y(?:ea)?rs?)?\b/i;
+
+/** Senior / leadership signals. */
+const SENIOR_LEVEL_RE =
+  /\b(senior|sr|lead|staff|principal|manager|head|director|architect|vp|chief)\b/i;
+
+/**
+ * Experience level of a role, derived from the title + description
+ * (deterministic, no backend). Precedence, strongest signal first:
+ *   1. an internship token → "intern";
+ *   2. an entry / early-career token (junior, fresher, associate, graduate,
+ *      0-1 / 0-2 yr …) → "entry";
+ *   3. a senior / leadership token (senior, lead, staff, manager, head …) →
+ *      "senior";
+ *   4. otherwise → "mid".
+ */
+export function experienceLevel(job: Job): ExperienceLevel {
+  const hay = `${job.title ?? ""} ${job.description ?? ""}`;
+  if (INTERN_RE.test(hay)) return "intern";
+  if (ENTRY_RE.test(hay)) return "entry";
+  if (SENIOR_LEVEL_RE.test(hay)) return "senior";
+  return "mid";
 }
 
 /* ------------------------------------------------------------------ */

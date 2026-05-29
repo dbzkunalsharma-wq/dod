@@ -24,6 +24,7 @@ SOURCE_LABELS = {
     "dribbble": "Dribbble",
     "behance": "Behance",
     "apna": "Apna",
+    "freshersworld": "Freshersworld",
 }
 
 

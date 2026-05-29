@@ -5,20 +5,26 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   compareTopPicks,
   effectiveTime,
+  experienceLevel as jobExperienceLevel,
   hasSalary as jobHasSalary,
   isFresherFriendly,
   isTopCompany,
   locationKey,
   salaryValue,
   SOURCE_ORDER,
+  withinDays,
   workMode as jobWorkMode,
 } from "@/lib/jobs";
+import type { ExperienceLevel } from "@/lib/jobs";
 import type { Discipline, Job, JobsFeed, Source } from "@/lib/types";
+import { DATE_FILTER_DAYS } from "@/lib/useFilterState";
 import { useFilterState } from "@/lib/useFilterState";
 import { useTracker } from "@/lib/useTracker";
 import {
   ActiveFilters,
   CopyLinkButton,
+  DatePostedSelect,
+  ExperienceFilter,
   FilterChips,
   LocationFilterSelect,
   SortControl,
@@ -64,6 +70,15 @@ function matchesSearch(job: Job, q: string): boolean {
 
 function emptyDisciplineCounts(): Record<Discipline, number> {
   return { uiux: 0, product: 0, communication: 0, industrial: 0 };
+}
+
+/** Whether a job matches the selected experience levels (empty set = any). */
+function matchesExperience(
+  job: Job,
+  selected: Set<ExperienceLevel>
+): boolean {
+  if (selected.size === 0) return true;
+  return selected.has(jobExperienceLevel(job));
 }
 
 /** Compare for the active sort mode. */
@@ -113,6 +128,8 @@ function JobsBoardInner() {
     savedOnly,
     status,
     sort,
+    datePosted,
+    experience,
   } = f;
 
   // Save + status tracking (localStorage).
@@ -172,9 +189,14 @@ function JobsBoardInner() {
       if (savedOnly && savedMap[job.id]?.saved !== true) return false;
       if (status !== "all" && (savedMap[job.id]?.status ?? "none") !== status)
         return false;
+      if (
+        datePosted !== "any" &&
+        !withinDays(job, DATE_FILTER_DAYS[datePosted])
+      )
+        return false;
       return true;
     };
-  }, [fresherOnly, hasSalaryOnly, savedOnly, status, tracker.map]);
+  }, [fresherOnly, hasSalaryOnly, savedOnly, status, datePosted, tracker.map]);
 
   const passesCommon = useMemo(() => {
     return (job: Job): boolean => {
@@ -194,11 +216,12 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (location !== "all" && locationKey(job) !== location) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!matchesExperience(job, experience)) continue;
       if (!passesCommon(job)) continue;
       counts[job.discipline] += 1;
     }
     return counts;
-  }, [allJobs, search, sources, location, workMode, passesCommon]);
+  }, [allJobs, search, sources, location, workMode, experience, passesCommon]);
 
   const disciplineTotal = useMemo(
     () =>
@@ -214,11 +237,12 @@ function JobsBoardInner() {
       if (!matchesSearch(job, search)) continue;
       if (location !== "all" && locationKey(job) !== location) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!matchesExperience(job, experience)) continue;
       if (!passesCommon(job)) continue;
       counts[job.source] = (counts[job.source] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, location, workMode, passesCommon]);
+  }, [allJobs, discipline, search, location, workMode, experience, passesCommon]);
 
   // location counts: respect every *other* facet, ignore location
   const locationCounts = useMemo(() => {
@@ -228,11 +252,12 @@ function JobsBoardInner() {
       if (!matchesSearch(job, search)) continue;
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!matchesExperience(job, experience)) continue;
       if (!passesCommon(job)) continue;
       counts[locationKey(job)] = (counts[locationKey(job)] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, sources, workMode, passesCommon]);
+  }, [allJobs, discipline, search, sources, workMode, experience, passesCommon]);
 
   // work-mode counts: respect every *other* facet, ignore work mode
   const workModeCounts = useMemo(() => {
@@ -242,11 +267,28 @@ function JobsBoardInner() {
       if (!matchesSearch(job, search)) continue;
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (location !== "all" && locationKey(job) !== location) continue;
+      if (!matchesExperience(job, experience)) continue;
       if (!passesCommon(job)) continue;
       counts[jobWorkMode(job)] = (counts[jobWorkMode(job)] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, sources, location, passesCommon]);
+  }, [allJobs, discipline, search, sources, location, experience, passesCommon]);
+
+  // experience counts: respect every *other* facet, ignore experience itself
+  const experienceCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const job of allJobs) {
+      if (discipline !== "all" && job.discipline !== discipline) continue;
+      if (!matchesSearch(job, search)) continue;
+      if (sources.size > 0 && !sources.has(job.source)) continue;
+      if (location !== "all" && locationKey(job) !== location) continue;
+      if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!passesCommon(job)) continue;
+      const lvl = jobExperienceLevel(job);
+      counts[lvl] = (counts[lvl] ?? 0) + 1;
+    }
+    return counts;
+  }, [allJobs, discipline, search, sources, location, workMode, passesCommon]);
 
   // which source chips to show (present anywhere in the feed), in fixed order
   const availableSources = useMemo(() => {
@@ -269,10 +311,11 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) return false;
       if (location !== "all" && locationKey(job) !== location) return false;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) return false;
+      if (!matchesExperience(job, experience)) return false;
       if (!passesCommonNoTop(job)) return false;
       return true;
     });
-  }, [allJobs, discipline, search, sources, location, workMode, passesCommonNoTop]);
+  }, [allJobs, discipline, search, sources, location, workMode, experience, passesCommonNoTop]);
   const topCount = topJobs.length;
 
   /* ------------------------------ final list ----------------------------- */
@@ -283,6 +326,7 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) return false;
       if (location !== "all" && locationKey(job) !== location) return false;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) return false;
+      if (!matchesExperience(job, experience)) return false;
       if (!passesCommon(job)) return false;
       return true;
     });
@@ -291,7 +335,7 @@ function JobsBoardInner() {
       filtered.sort((a, b) => compareBySort(a, b, sort));
     }
     return filtered;
-  }, [allJobs, discipline, search, sources, location, workMode, sort, passesCommon]);
+  }, [allJobs, discipline, search, sources, location, workMode, experience, sort, passesCommon]);
 
   /* ---------------------------- pagination ------------------------------- */
   // Reveal a window of cards; grow it on scroll / "Load more". The window
@@ -311,6 +355,8 @@ function JobsBoardInner() {
         savedOnly,
         status,
         sort,
+        datePosted,
+        Array.from(experience).sort().join(","),
         // saved/status views depend on the tracker map, so fold its size in
         savedOnly || status !== "all" ? tracker.savedCount : 0,
       ].join("|"),
@@ -326,6 +372,8 @@ function JobsBoardInner() {
       savedOnly,
       status,
       sort,
+      datePosted,
+      experience,
       tracker.savedCount,
     ]
   );
@@ -425,6 +473,10 @@ function JobsBoardInner() {
                     counts={locationCounts}
                     onChange={f.setLocation}
                   />
+                  <DatePostedSelect
+                    value={datePosted}
+                    onChange={f.setDatePosted}
+                  />
                   <SortControl value={sort} onChange={f.setSort} />
                 </div>
               </div>
@@ -435,6 +487,16 @@ function JobsBoardInner() {
                   value={workMode}
                   counts={workModeCounts}
                   onChange={f.setWorkMode}
+                />
+              </div>
+
+              {/* experience-level chips */}
+              <div className="border-t border-[var(--silver-line)] pt-3">
+                <ExperienceFilter
+                  selected={experience}
+                  counts={experienceCounts}
+                  onToggle={f.toggleExperience}
+                  onClear={f.clearExperience}
                 />
               </div>
 
@@ -495,6 +557,8 @@ function JobsBoardInner() {
               topOnly={topOnly}
               savedOnly={savedOnly}
               status={status}
+              datePosted={datePosted}
+              experience={experience}
               onClearDiscipline={() => f.setDiscipline("all")}
               onClearSearch={() => f.setSearch("")}
               onRemoveSource={(s) => f.toggleSource(s)}
@@ -505,6 +569,8 @@ function JobsBoardInner() {
               onClearTop={() => f.setTopOnly(false)}
               onClearSaved={() => f.setSavedOnly(false)}
               onClearStatus={() => f.setStatus("all")}
+              onClearDatePosted={() => f.setDatePosted("any")}
+              onRemoveExperience={(level) => f.toggleExperience(level)}
               onClearAll={resetAll}
             />
           </div>

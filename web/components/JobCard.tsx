@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import Link from "next/link";
 import {
   contactHref,
   DISCIPLINE_MAP,
@@ -172,7 +173,7 @@ export function JobCard({
       </div>
 
       {/* push the action to the bottom so cards in a row align */}
-      <div className="mt-4 flex flex-1 items-end">
+      <div className="mt-4 flex flex-1 items-end gap-2">
         <a
           href={job.url}
           target="_blank"
@@ -180,7 +181,7 @@ export function JobCard({
           // Apply must NOT open the modal.
           onClick={(e) => e.stopPropagation()}
           className={clsx(
-            "relative inline-flex w-full items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white",
+            "relative inline-flex flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white",
             "transition-all duration-200 hover:border-transparent hover:text-white",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0b12]"
           )}
@@ -199,6 +200,24 @@ export function JobCard({
           <span className="relative">Apply</span>
           <ArrowUpRightIcon className="relative h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </a>
+
+        {/* additive: open the full crawlable detail page (the card click still
+            opens the quick-view modal). stopPropagation so it doesn't fire that. */}
+        <Link
+          href={`/jobs/${encodeURIComponent(job.id)}`}
+          onClick={(e) => e.stopPropagation()}
+          className={clsx(
+            "inline-flex shrink-0 items-center justify-center gap-1 rounded-xl border border-[var(--silver-line)] bg-white/[0.04] px-3 py-2.5 text-sm font-medium text-white/65",
+            "transition-all duration-200 hover:border-white/25 hover:bg-white/[0.08] hover:text-white",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0b12]"
+          )}
+          aria-label={`Open the details page for ${job.title}${
+            job.company ? ` at ${job.company}` : ""
+          }`}
+        >
+          Open
+          <ArrowUpRightIcon className="h-4 w-4" />
+        </Link>
       </div>
     </article>
   );

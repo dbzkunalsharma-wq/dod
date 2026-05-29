@@ -2,12 +2,16 @@
 
 import clsx from "clsx";
 import {
+  EXPERIENCE_LABELS,
+  EXPERIENCE_LEVELS,
   LOCATION_LABELS,
   WORK_MODES,
   LOCATIONS,
   sourceLabel,
 } from "@/lib/jobs";
+import type { ExperienceLevel } from "@/lib/jobs";
 import type {
+  DateFilter,
   DisciplineFilter,
   LocationFilter,
   SortMode,
@@ -19,6 +23,7 @@ import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import { STATUS_VISUALS } from "./tracker-ui";
 import {
   BookmarkIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   CloseIcon,
@@ -227,6 +232,81 @@ export function WorkTypeFilter({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Experience-level chips — Intern / Entry / Mid / Senior             */
+/*  A multi-select row (faceted like sources): empty selection = any.  */
+/*  Counts per level ignore the experience facet's own selection.      */
+/* ------------------------------------------------------------------ */
+
+export function ExperienceFilter({
+  selected,
+  counts,
+  onToggle,
+  onClear,
+}: {
+  selected: Set<ExperienceLevel>;
+  counts: Record<string, number>;
+  onToggle: (level: ExperienceLevel) => void;
+  onClear: () => void;
+}) {
+  const anyActive = selected.size === 0;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5"
+      role="group"
+      aria-label="Filter by experience level"
+    >
+      <span className="mr-0.5 text-xs font-medium uppercase tracking-wide text-white/40">
+        Experience
+      </span>
+
+      <button
+        type="button"
+        onClick={onClear}
+        aria-pressed={anyActive}
+        className={clsx(
+          "rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-md transition-colors duration-200",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+          anyActive
+            ? "border-[var(--silver-bright)] bg-white/15 text-white"
+            : "border-[var(--silver-line)] bg-white/[0.04] text-white/55 hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+        )}
+      >
+        Any
+      </button>
+
+      {EXPERIENCE_LEVELS.map((e) => {
+        const active = selected.has(e.key);
+        return (
+          <button
+            key={e.key}
+            type="button"
+            onClick={() => onToggle(e.key)}
+            aria-pressed={active}
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-md transition-colors duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+              active
+                ? "border-violet-300/40 bg-violet-400/20 text-white shadow-[0_4px_20px_-6px_rgba(139,92,246,0.5)]"
+                : "border-[var(--silver-line)] bg-white/[0.04] text-white/55 hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+            )}
+          >
+            {e.label}
+            <span
+              className={clsx(
+                "tabular-nums",
+                active ? "text-white/70" : "text-white/35"
+              )}
+            >
+              {counts[e.key] ?? 0}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Styled native <select> — accessible, keyboard-native, mobile-safe  */
 /*  Used for the location facet + sort (long lists where a native      */
 /*  popup beats a custom one for a11y).                                */
@@ -337,6 +417,43 @@ export function SortControl({
       {(Object.keys(SORT_LABELS) as SortMode[]).map((s) => (
         <option key={s} value={s}>
           {SORT_LABELS[s]}
+        </option>
+      ))}
+    </GlassSelect>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Date-posted control — Any time / Past 24h / Past 7 days / 30 days  */
+/*  A compact native dropdown sitting beside Sort.                     */
+/* ------------------------------------------------------------------ */
+
+const DATE_LABELS: Record<DateFilter, string> = {
+  any: "Any time",
+  "24h": "Past 24 hours",
+  "7d": "Past 7 days",
+  "30d": "Past 30 days",
+};
+
+const DATE_ORDER: DateFilter[] = ["any", "24h", "7d", "30d"];
+
+export function DatePostedSelect({
+  value,
+  onChange,
+}: {
+  value: DateFilter;
+  onChange: (d: DateFilter) => void;
+}) {
+  return (
+    <GlassSelect
+      value={value}
+      onChange={(v) => onChange(v as DateFilter)}
+      ariaLabel="Filter by date posted"
+      icon={<CalendarIcon className="h-3.5 w-3.5" />}
+    >
+      {DATE_ORDER.map((d) => (
+        <option key={d} value={d}>
+          {DATE_LABELS[d]}
         </option>
       ))}
     </GlassSelect>
@@ -492,6 +609,13 @@ interface ActiveChip {
   onRemove: () => void;
 }
 
+const DATE_FILTER_LABELS: Record<DateFilter, string> = {
+  any: "Any time",
+  "24h": "Past 24h",
+  "7d": "Past 7 days",
+  "30d": "Past 30 days",
+};
+
 export function ActiveFilters({
   discipline,
   search,
@@ -503,6 +627,8 @@ export function ActiveFilters({
   topOnly,
   savedOnly,
   status,
+  datePosted,
+  experience,
   onClearDiscipline,
   onClearSearch,
   onRemoveSource,
@@ -513,6 +639,8 @@ export function ActiveFilters({
   onClearTop,
   onClearSaved,
   onClearStatus,
+  onClearDatePosted,
+  onRemoveExperience,
   onClearAll,
 }: {
   discipline: DisciplineFilter;
@@ -525,6 +653,8 @@ export function ActiveFilters({
   topOnly: boolean;
   savedOnly: boolean;
   status: StatusFilter;
+  datePosted: DateFilter;
+  experience: Set<ExperienceLevel>;
   onClearDiscipline: () => void;
   onClearSearch: () => void;
   onRemoveSource: (s: Source) => void;
@@ -535,6 +665,8 @@ export function ActiveFilters({
   onClearTop: () => void;
   onClearSaved: () => void;
   onClearStatus: () => void;
+  onClearDatePosted: () => void;
+  onRemoveExperience: (level: ExperienceLevel) => void;
   onClearAll: () => void;
 }) {
   const chips: ActiveChip[] = [];
@@ -582,6 +714,20 @@ export function ActiveFilters({
       key: "top",
       label: "Top companies",
       onRemove: onClearTop,
+    });
+  if (datePosted !== "any")
+    chips.push({
+      key: "posted",
+      label: DATE_FILTER_LABELS[datePosted],
+      onRemove: onClearDatePosted,
+    });
+  for (const level of EXPERIENCE_LEVELS.map((e) => e.key).filter((k) =>
+    experience.has(k)
+  ))
+    chips.push({
+      key: `exp-${level}`,
+      label: EXPERIENCE_LABELS[level],
+      onRemove: () => onRemoveExperience(level),
     });
   if (savedOnly)
     chips.push({ key: "saved", label: "Saved", onRemove: onClearSaved });

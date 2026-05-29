@@ -10,11 +10,45 @@ OUT = Path(__file__).parent / "web" / "public" / "jobs.json"
 FIELDS = ("id", "source", "discipline", "title", "company", "location",
           "url", "contact", "posted_at", "logo", "salary", "seen_at")
 
+# Mirror poll.py's freshness gate at export time: a job already sitting in the DB is
+# dropped from the public feed once its posted_at is parseable AND older than this.
+# (poll.py only blocks *new* stale inserts; this also evicts rows that aged past the
+# window while in the DB.) Rows with a missing/garbled date are kept — we can't prove
+# they're stale, and would rather show a maybe-old role than silently lose a fresh one.
+MAX_AGE_DAYS = 55
+
+
+def _parse_posted(value):
+    """Best-effort parse of posted_at into an aware UTC datetime, or None (kept)."""
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            dt = datetime.strptime(text[:10], "%Y-%m-%d")
+        except (ValueError, IndexError):
+            return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def _is_stale(value, now) -> bool:
+    dt = _parse_posted(value)
+    if dt is None:
+        return False
+    return (now - dt).days > MAX_AGE_DAYS
+
 
 def main():
     rows = db.recent_jobs(limit=5000)
+    now = datetime.now(timezone.utc)
     jobs = []
+    dropped = 0
     for r in rows:
+        if _is_stale(r.get("posted_at"), now):
+            dropped += 1
+            continue
         job = {k: r.get(k) for k in FIELDS}
         job["description"] = (r.get("description") or "").strip()[:1200]  # bound feed size
         jobs.append(job)
@@ -25,7 +59,7 @@ def main():
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    print(f"wrote {len(jobs)} jobs to {OUT}")
+    print(f"wrote {len(jobs)} jobs to {OUT} (dropped {dropped} stale >{MAX_AGE_DAYS}d)")
 
 
 if __name__ == "__main__":

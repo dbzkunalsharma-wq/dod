@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 import { DISCIPLINE_MAP, isNew, postedAgo, sourceLabel } from "@/lib/jobs";
 import type { Job } from "@/lib/types";
@@ -269,6 +270,19 @@ export function JobDetailModal({
             <span className="relative">Apply on {sourceLabel(job.source)}</span>
             <ArrowUpRightIcon className="relative h-4 w-4 transition-transform duration-200 group-hover/apply:translate-x-0.5 group-hover/apply:-translate-y-0.5" />
           </a>
+          {/* additive: a permanent, crawlable detail page for this role */}
+          <Link
+            href={`/jobs/${encodeURIComponent(job.id)}`}
+            className={clsx(
+              "inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200",
+              "border-white/10 bg-white/[0.06] text-white/75 hover:border-white/25 hover:bg-white/[0.12] hover:text-white",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0b12]"
+            )}
+            aria-label={`Open the full details page for ${job.title}`}
+          >
+            <ArrowUpRightIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Open page</span>
+          </Link>
           <CopyJobLinkButton jobId={job.id} />
         </div>
       </div>

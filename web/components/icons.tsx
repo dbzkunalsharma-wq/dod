@@ -391,6 +391,25 @@ export function MapPinIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Calendar — marks the date-posted control. */
+export function CalendarIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <rect x={3.5} y={5} width={17} height={16} rx={2.5} />
+      <path d="M3.5 9.5h17M8 3v4m8-4v4" />
+    </svg>
+  );
+}
+
 export function EmptyIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

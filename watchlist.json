@@ -13,5 +13,7 @@
   {"company": "Ramp", "platform": "ashby", "slug": "Ramp"},
   {"company": "Groww", "platform": "greenhouse", "slug": "groww"},
   {"company": "PhonePe", "platform": "greenhouse", "slug": "phonepe"},
-  {"company": "Slice", "platform": "greenhouse", "slug": "slice"}
+  {"company": "Slice", "platform": "greenhouse", "slug": "slice"},
+  {"company": "Meesho", "platform": "lever", "slug": "meesho"},
+  {"company": "Hevo Data", "platform": "lever", "slug": "hevodata"}
 ]

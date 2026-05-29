@@ -28,9 +28,11 @@ _QUERIES = [
     "UI UX Designer", "Product Designer", "Graphic Designer", "Visual Designer",
     "Motion Designer", "Interaction Designer", "UX Researcher",
     "Industrial Designer", "Communication Designer", "Brand Designer",
+    "Design Lead", "Design Manager", "Service Designer", "UX Writer",
+    "Packaging Designer", "Web Designer",
 ]
 _LOCATION = "India"
-_STARTS = (0, 10, 20, 30)  # four pages (~40 results) per query
+_STARTS = (0, 10, 20)  # three pages (~30 results) per query; bounds LinkedIn 429s
 _DELAY = 1.2             # seconds between requests, to stay polite / avoid throttling
 
 
