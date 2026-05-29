@@ -1,0 +1,380 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/*  Theme tokens (Tailwind v4 CSS-first config)                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --background: #06070d; /* darker indigo-tinted near-black */
+  --foreground: #fafafa; /* zinc-50  */
+
+  /* Silver / metallic edge system — tune these to retune every glass edge.
+     A cool silver hairline + brighter top/dark bottom for a beveled metal feel. */
+  --silver-line: rgba(192, 197, 214, 0.22); /* base hairline */
+  --silver-bright: rgba(214, 219, 233, 0.5); /* lit top edge */
+  --silver-dim: rgba(120, 126, 145, 0.16); /* shaded bottom edge */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Base                                                               */
+/* ------------------------------------------------------------------ */
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Radiant gradient backdrop                                          */
+/*  A misty aurora behind everything: a fixed deep base + 3 large,     */
+/*  heavily-blurred, low-opacity radial "blooms". Never flat black.    */
+/* ------------------------------------------------------------------ */
+
+.dod-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background-color: var(--background);
+}
+
+/* Knobs: tweak --bloom-* hues/opacity here to retune the aurora. */
+.dod-bloom {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  will-change: transform;
+}
+
+/* violet/indigo — top-left (toned down for a darker, premium feel) */
+.dod-bloom--violet {
+  top: -14rem;
+  left: -10rem;
+  width: 46rem;
+  height: 46rem;
+  background: radial-gradient(
+    circle,
+    rgba(124, 92, 246, 0.28),
+    rgba(99, 102, 241, 0.12) 45%,
+    transparent 70%
+  );
+}
+
+/* teal/blue — mid-right */
+.dod-bloom--teal {
+  top: 18%;
+  right: -16rem;
+  width: 42rem;
+  height: 42rem;
+  background: radial-gradient(
+    circle,
+    rgba(20, 184, 166, 0.22),
+    rgba(56, 189, 248, 0.1) 45%,
+    transparent 70%
+  );
+}
+
+/* faint warm amber — bottom */
+.dod-bloom--amber {
+  bottom: -18rem;
+  left: 28%;
+  width: 40rem;
+  height: 40rem;
+  background: radial-gradient(
+    circle,
+    rgba(245, 158, 11, 0.16),
+    rgba(251, 146, 60, 0.08) 45%,
+    transparent 70%
+  );
+}
+
+/* A barely-there top hairline so the page reads as a lit surface, plus
+   a faint dot grid for editorial texture. */
+.dod-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05), transparent 16%),
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px
+    );
+  background-size: 100% 100%, 28px 28px;
+}
+
+/* A very slow drift to keep the aurora alive (motion-safe only). */
+@keyframes dod-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.5rem, 1.5rem, 0) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dod-bloom--violet {
+    animation: dod-drift 26s ease-in-out infinite;
+  }
+  .dod-bloom--teal {
+    animation: dod-drift 32s ease-in-out infinite reverse;
+  }
+  .dod-bloom--amber {
+    animation: dod-drift 38s ease-in-out infinite;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Glass system (reusable component utilities)                        */
+/* ------------------------------------------------------------------ */
+
+/* Frosted glass panel: translucent, blurred, a refined cool *silver* hairline,
+   a soft drop shadow + a faint inset top highlight, and a top inner sheen
+   via a ::before gradient.                                               */
+.dod-glass {
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.05);
+  /* cool silver hairline instead of plain white */
+  border: 1px solid var(--silver-line);
+  -webkit-backdrop-filter: blur(40px);
+  backdrop-filter: blur(40px);
+  /* deeper drop shadow for the darker theme + a 1px inner silver bevel */
+  box-shadow:
+    0 10px 44px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 0 rgba(214, 219, 233, 0.08);
+}
+
+/* Top inner highlight — a thin gradient sheen along the upper edge. */
+.dod-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding-top: 1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(220, 224, 238, 0.22),
+    transparent 42%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ---- Metallic silver gradient edge -------------------------------- */
+/* `.dod-glass--silver` adds a 1px *gradient* ring (bright lit top → dim
+   shaded bottom) on top of the base hairline, for a brushed-metal bevel.
+   Painted as a masked ::after ring so it sits exactly on the border and
+   never clips inner content. Knob: --silver-bright / --silver-dim above. */
+.dod-glass--silver::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    var(--silver-bright) 0%,
+    var(--silver-line) 35%,
+    var(--silver-dim) 70%,
+    var(--silver-bright) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Keep real content above the ::before/::after decorative layers. */
+.dod-glass > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* A lighter silver top-edge for footers / sub-bars that aren't full panels. */
+.dod-glass--silver-edge {
+  border-top-color: var(--silver-line);
+}
+
+/* Company avatar — a subtle inset highlight so logos/initials sit on glass. */
+.dod-avatar {
+  box-shadow:
+    inset 0 1px 0 0 rgba(220, 224, 238, 0.18),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Detail modal                                                       */
+/* ------------------------------------------------------------------ */
+
+@keyframes dod-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dod-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dod-modal-overlay {
+  animation: dod-overlay-in 0.2s ease-out both;
+}
+
+.dod-modal-panel {
+  animation: dod-panel-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Tighter scrollbar inside the modal body. */
+.dod-modal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Animations                                                         */
+/* ------------------------------------------------------------------ */
+
+/* Live pulse used next to the job count. */
+@keyframes dod-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+.dod-live-dot {
+  animation: dod-pulse 2s ease-in-out infinite;
+}
+
+/* Card entrance — staggered via inline animation-delay. */
+@keyframes dod-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dod-rise {
+  animation: dod-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Glass shimmer for skeletons — a sweeping sheen across the surface. */
+@keyframes dod-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.dod-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.dod-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+  animation: dod-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .dod-live-dot,
+  .dod-rise,
+  .dod-shimmer::after,
+  .dod-modal-overlay,
+  .dod-modal-panel {
+    animation: none;
+  }
+  .dod-rise,
+  .dod-modal-panel {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Polish                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Selection + focus polish */
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: #fff;
+}
+
+/* Custom scrollbar (WebKit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: content-box;
+}

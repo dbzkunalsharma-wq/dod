@@ -1,0 +1,9 @@
+{
+  "_note": "Public Telegram channels DOD scrapes via t.me/s/<name> (no API creds needed). Use bare usernames; verify a channel is live and public at https://t.me/s/<name>. Non-design and non-India posts are dropped downstream by the classifier + India filter, so general India job channels are fine to include. Avoid private/invite (+hash / joinchat) channels.",
+  "channels": [
+    "designjobsindia",
+    "indiareferraljobs",
+    "offcampusjobs4u",
+    "Jobs_and_internships_updates"
+  ]
+}

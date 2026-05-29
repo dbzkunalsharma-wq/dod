@@ -1,0 +1,40 @@
+name: Refresh DOD jobs
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"   # every 2 hours
+  workflow_dispatch: {}       # allow manual runs
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Scrape + classify (rebuild snapshot)
+        run: python poll.py --seed
+
+      - name: Export feed
+        run: python export.py
+
+      - name: Commit refreshed feed
+        run: |
+          git config user.name "dod-bot"
+          git config user.email "dod-bot@users.noreply.github.com"
+          git add web/public/jobs.json
+          if git diff --staged --quiet; then
+            echo "No changes."
+          else
+            git commit -m "chore: refresh jobs feed"
+            git push
+          fi

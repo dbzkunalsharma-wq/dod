@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+web/node_modules/
+web/.next/
+*.log
+*.session
+bot.out

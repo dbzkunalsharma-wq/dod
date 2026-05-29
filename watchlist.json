@@ -1,0 +1,14 @@
+[
+  {
+    "_note": "Watchlist for DOD's ATS scraper. Entries {company, platform, slug}; platform = greenhouse|lever|ashby|workday. A role is kept if India-located OR remote-open-to-India (geo.accepts_india). Design-rich + remote-friendly employers listed; add your own design-forward companies. Lines starting with _ are ignored by the loader. ashby slugs are case-sensitive."
+  },
+  {"company": "Figma", "platform": "greenhouse", "slug": "figma"},
+  {"company": "Duolingo", "platform": "greenhouse", "slug": "duolingo"},
+  {"company": "GitLab", "platform": "greenhouse", "slug": "gitlab"},
+  {"company": "Postman", "platform": "greenhouse", "slug": "postman"},
+  {"company": "Spotify", "platform": "lever", "slug": "spotify"},
+  {"company": "CRED", "platform": "lever", "slug": "cred"},
+  {"company": "Linear", "platform": "ashby", "slug": "Linear"},
+  {"company": "Runway", "platform": "ashby", "slug": "Runway"},
+  {"company": "Ramp", "platform": "ashby", "slug": "Ramp"}
+]

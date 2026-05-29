@@ -1,0 +1,5 @@
+python-telegram-bot>=21.0
+python-dotenv>=1.0
+httpx>=0.27
+telethon>=1.36
+beautifulsoup4>=4.12
