@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -14,20 +14,47 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+const SITE_TITLE = "DOD — Live India Design Jobs";
+const SITE_DESCRIPTION =
+  "The fastest way to find design jobs in India. DOD aggregates 800+ live UI/UX, Product, Communication and Industrial design roles from LinkedIn, Foundit, Unstop, Internshala and more — filter by city, work type and salary, and save what you like.";
+
 export const metadata: Metadata = {
-  title: "DOD — Live India design jobs",
-  description:
-    "A live, curated board of UI/UX, Product, Communication and Industrial design roles across India — updated continuously from LinkedIn, Unstop, Greenhouse, Lever, Ashby, RemoteOK and more.",
+  title: {
+    default: SITE_TITLE,
+    template: "%s · DOD",
+  },
+  description: SITE_DESCRIPTION,
   applicationName: "DOD",
   authors: [{ name: "DOD" }],
   keywords: [
-    "design jobs",
-    "India",
-    "UI/UX",
-    "product design",
-    "communication design",
-    "industrial design",
+    "design jobs India",
+    "UI/UX jobs",
+    "product design jobs",
+    "communication design jobs",
+    "industrial design jobs",
+    "design internships India",
+    "Bengaluru design jobs",
+    "remote design jobs India",
   ],
+  openGraph: {
+    type: "website",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    siteName: "DOD",
+    locale: "en_IN",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
+  category: "jobs",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#06070d",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({

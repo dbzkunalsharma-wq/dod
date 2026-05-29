@@ -269,6 +269,276 @@ export function faviconUrl(
   return `https://www.google.com/s2/favicons?sz=${size}&domain=${domain}`;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Top companies — curated leaders + matcher (deterministic, no ML)   */
+/*                                                                     */
+/*  A hand-picked list of design-respected global leaders + top Indian */
+/*  product companies / startups / studios. Matching is robust: the    */
+/*  job's company string is lowercased and stripped of legal / suffix  */
+/*  noise, then compared by *whole word* / equality against each top   */
+/*  token — never a loose substring. This keeps "metamorph" away from  */
+/*  "meta", "canvas" away from "canva", and "credit" away from "cred", */
+/*  while still matching "Navi" / "Ola" when they stand alone.         */
+/* ------------------------------------------------------------------ */
+
+/** Canonical display names for the curated top companies. */
+export const TOP_COMPANIES: string[] = [
+  // Global design-respected leaders
+  "Google",
+  "Microsoft",
+  "Adobe",
+  "Apple",
+  "Amazon",
+  "Meta",
+  "Netflix",
+  "Uber",
+  "Airbnb",
+  "Spotify",
+  "Figma",
+  "Atlassian",
+  "Salesforce",
+  "Intuit",
+  "LinkedIn",
+  "Stripe",
+  "Notion",
+  "Canva",
+  "Miro",
+  "Dropbox",
+  "Shopify",
+  "Booking",
+  "Twilio",
+  "Zoom",
+  "Slack",
+  "Pinterest",
+  "Snap",
+  "Autodesk",
+  "SAP",
+  "Oracle",
+  "IBM",
+  "Walmart",
+  "Goldman Sachs",
+  "JPMorgan",
+  "Visa",
+  "Mastercard",
+  "Coinbase",
+  "GitHub",
+  "GitLab",
+  "MongoDB",
+  "Databricks",
+  "ServiceNow",
+  "Workday",
+  "Wayfair",
+  "ThoughtWorks",
+  "Nvidia",
+  "PayPal",
+  // Top Indian product companies / startups
+  "Razorpay",
+  "CRED",
+  "Swiggy",
+  "Zomato",
+  "Flipkart",
+  "PhonePe",
+  "Paytm",
+  "Groww",
+  "Meesho",
+  "Zerodha",
+  "Postman",
+  "Zeta",
+  "ShareChat",
+  "Unacademy",
+  "Ola",
+  "Myntra",
+  "Nykaa",
+  "Dream11",
+  "Slice",
+  "Jupiter",
+  "Navi",
+  "Zepto",
+  "Rapido",
+  "Urban Company",
+  "BrowserStack",
+  "Freshworks",
+  "Zoho",
+  "Hotstar",
+  "Cult.fit",
+  "Cure.fit",
+  "Dunzo",
+  "BigBasket",
+  "Cars24",
+  "Spinny",
+  "CoinDCX",
+  "CoinSwitch",
+  "Chargebee",
+  "Hasura",
+  "Innovaccer",
+  "MPL",
+  "PharmEasy",
+  "Practo",
+  "Lenskart",
+  "BookMyShow",
+  "MakeMyTrip",
+  "Cleartrip",
+  "Fi Money",
+  "smallcase",
+  "INDmoney",
+  "Juspay",
+  "Pine Labs",
+  "Cashfree",
+  "Physics Wallah",
+  "upGrad",
+  "Vedantu",
+  // Studios
+  "Lollypop",
+  "Obvious",
+  "Fractal Ink",
+  "Codewave",
+];
+
+/**
+ * Normalise a company name for top-company matching: lowercase, fold accents,
+ * drop punctuation, and strip common legal / suffix noise words so e.g.
+ * "Razorpay Software Pvt Ltd" → "razorpay" and "Walmart Global Tech India" →
+ * "walmart tech". Returns the cleaned token list (whitespace-joined too).
+ */
+function normalizeCompany(company: string): string {
+  const skip = new Set([
+    "pvt",
+    "private",
+    "limited",
+    "ltd",
+    "llc",
+    "llp",
+    "inc",
+    "incorporated",
+    "corp",
+    "corporation",
+    "co",
+    "company",
+    "technologies",
+    "technology",
+    "technolabs",
+    "tech",
+    "labs",
+    "lab",
+    "india",
+    "indian",
+    "global",
+    "solutions",
+    "solution",
+    "systems",
+    "system",
+    "the",
+    "group",
+    "ventures",
+    "enterprises",
+    "services",
+    "studio",
+    "studios",
+  ]);
+  return company
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]+/g, " ") // drop punctuation (dots, commas, |, …)
+    .split(/\s+/)
+    .filter((w) => w && !skip.has(w))
+    .join(" ")
+    .trim();
+}
+
+/**
+ * Short / ambiguous normalized tokens that must match by EXACT equality only —
+ * never startsWith / containment — so common words don't masquerade as brands
+ * ("Metadata" ≠ Meta, "Credflow" ≠ CRED, "Jarvis" ≠ Jar, "Fintech" ≠ Fi). The
+ * brief calls these out explicitly. "Jio Platforms" / "Ola Electric" therefore
+ * won't match — a deliberately conservative trade-off for these few names.
+ */
+const AMBIGUOUS_TOKENS = new Set<string>([
+  "ola",
+  "meta",
+  "snap",
+  "cred",
+  "jio",
+  "jar",
+  "fi",
+  "zeta",
+  "navi",
+]);
+
+/**
+ * Confirmed real-world collisions: distinct companies whose normalized name
+ * starts with a curated brand token but are NOT that brand. Kept tiny and
+ * data-driven (these appear in the live feed). Matched against the *fully
+ * cleaned* name, so suffix noise is already stripped.
+ */
+const TOP_COMPANY_DENYLIST = new Set<string>([
+  "amazon filters", // UK water-filtration co, not Amazon
+  "digital apple", // small agency, not Apple (also fails the startsWith rule)
+]);
+
+/**
+ * Pre-computed lookup of `normalized top token → canonical display name`.
+ * (e.g. "goldman sachs" → "Goldman Sachs", "cred" → "CRED".) Built once.
+ */
+const TOP_COMPANY_LOOKUP: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const name of TOP_COMPANIES) {
+    const key = normalizeCompany(name);
+    if (key) m.set(key, name);
+  }
+  return m;
+})();
+
+/**
+ * The canonical top-company display name a company string matches, or null.
+ *
+ * Match rules (anchored / equality only — never a loose substring):
+ *   1. the fully-cleaned name EQUALS a top token  ("razorpay" → Razorpay); or
+ *   2. for *distinctive* brands, the cleaned name STARTS WITH the token at a
+ *      word boundary  ("walmart global tech" → Walmart, "google india" →
+ *      Google, "lollypop design" → Lollypop). A trailing brand never matches,
+ *      so "Digital Apple" is NOT Apple and "design by metamorph" is NOT Meta.
+ *   3. *ambiguous* short tokens (ola, meta, snap, cred, jio, jar, fi, zeta,
+ *      navi) match by EXACT equality only — "Metadata"/"Credflow" stay out.
+ *
+ * A small denylist removes confirmed real-world collisions ("Amazon Filters").
+ * Multi-word tokens ("goldman sachs", "urban company") are matched as a whole
+ * phrase. The longest matching token wins so a more specific brand prevails.
+ */
+export function topCompanyName(company: string | null): string | null {
+  if (!company) return null;
+  const cleaned = normalizeCompany(company);
+  if (!cleaned) return null;
+
+  // Fast path: exact equality on the whole cleaned name.
+  const exact = TOP_COMPANY_LOOKUP.get(cleaned);
+  if (exact) return exact;
+
+  if (TOP_COMPANY_DENYLIST.has(cleaned)) return null;
+
+  // Anchored startsWith for distinctive brands: the cleaned name must *begin*
+  // with the token followed by a word boundary (or be equal — covered above).
+  // Ambiguous short tokens are exact-only and so were already handled by the
+  // fast path; they never reach the startsWith test. Prefer the longest token
+  // so a more specific multi-word brand wins.
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const [token, name] of TOP_COMPANY_LOOKUP) {
+    if (token.length <= bestLen) continue;
+    if (AMBIGUOUS_TOKENS.has(token)) continue; // exact-only — not here
+    if (cleaned === token || cleaned.startsWith(`${token} `)) {
+      best = name;
+      bestLen = token.length;
+    }
+  }
+  return best;
+}
+
+/** Whether a company is one of the curated top companies (robust match). */
+export function isTopCompany(company: string | null): boolean {
+  return topCompanyName(company) !== null;
+}
+
 /**
  * Resolve a `contact` string to a clickable href: emails → `mailto:`,
  * Telegram handles (`@name`) → t.me link. Returns null for free-text
@@ -361,6 +631,197 @@ export function workType(job: Job): WorkType {
 /** Whether a role is an internship. */
 export function isInternship(job: Job): boolean {
   return workType(job) === "internship";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Location facet — collapse messy location strings into clean cities */
+/*  Deterministic substring matching (no backend, no ML). The feed's   */
+/*  `location` is free-text ("Sector 37 Gurgaon, Delhi-NCR, India",    */
+/*  "Bengaluru, Karnataka, India", "Remote (India)"), so we bucket it. */
+/* ------------------------------------------------------------------ */
+
+export type LocationKey =
+  | "bengaluru"
+  | "mumbai"
+  | "delhi-ncr"
+  | "hyderabad"
+  | "pune"
+  | "chennai"
+  | "kolkata"
+  | "ahmedabad"
+  | "remote"
+  | "other";
+
+export interface LocationMeta {
+  key: LocationKey;
+  label: string;
+}
+
+/** Display order for the location chips (biggest design hubs first). */
+export const LOCATIONS: LocationMeta[] = [
+  { key: "bengaluru", label: "Bengaluru" },
+  { key: "delhi-ncr", label: "Delhi NCR" },
+  { key: "mumbai", label: "Mumbai" },
+  { key: "hyderabad", label: "Hyderabad" },
+  { key: "pune", label: "Pune" },
+  { key: "chennai", label: "Chennai" },
+  { key: "kolkata", label: "Kolkata" },
+  { key: "ahmedabad", label: "Ahmedabad" },
+  { key: "remote", label: "Remote" },
+  { key: "other", label: "Other" },
+];
+
+export const LOCATION_LABELS: Record<LocationKey, string> = Object.fromEntries(
+  LOCATIONS.map((l) => [l.key, l.label])
+) as Record<LocationKey, string>;
+
+/**
+ * City buckets, matched as case-insensitive substrings against the location
+ * string. Each bucket lists every alias that should fold into it — Delhi NCR
+ * absorbs Gurgaon/Gurugram/Noida/Faridabad/Ghaziabad/New Delhi, etc. Order in
+ * the bucket doesn't matter; the *first matching bucket* (by LOCATIONS order)
+ * wins. "Remote" is detected separately (it can co-occur with a city).
+ */
+const CITY_ALIASES: Record<Exclude<LocationKey, "remote" | "other">, string[]> =
+  {
+    bengaluru: ["bengaluru", "bangalore", "bengalore"],
+    "delhi-ncr": [
+      "delhi",
+      "new delhi",
+      "ncr",
+      "gurgaon",
+      "gurugram",
+      "noida",
+      "faridabad",
+      "ghaziabad",
+    ],
+    mumbai: ["mumbai", "navi mumbai", "thane", "worli", "bombay"],
+    hyderabad: ["hyderabad", "secunderabad"],
+    pune: ["pune", "pimpri", "chinchwad"],
+    chennai: ["chennai", "madras"],
+    kolkata: ["kolkata", "calcutta", "howrah"],
+    ahmedabad: ["ahmedabad", "gandhinagar"],
+  };
+
+/** True when a location/title signals a remote role. */
+function looksRemote(job: Job): boolean {
+  const hay = `${job.location ?? ""} ${job.title ?? ""}`.toLowerCase();
+  return /\bremote\b|work from home|wfh\b/.test(hay);
+}
+
+/**
+ * Bucket a job into a single clean location facet. Remote wins only when no
+ * concrete city is named (so "Remote, Bengaluru" still files under Bengaluru
+ * and stays reachable); pure-remote / "Remote (India)" → "remote"; anything
+ * with no recognised city → "other".
+ */
+export function locationKey(job: Job): LocationKey {
+  const loc = (job.location ?? "").toLowerCase();
+  for (const { key } of LOCATIONS) {
+    if (key === "remote" || key === "other") continue;
+    const aliases = CITY_ALIASES[key as keyof typeof CITY_ALIASES];
+    if (aliases.some((a) => loc.includes(a))) return key;
+  }
+  if (looksRemote(job)) return "remote";
+  return "other";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Work-type facet — Remote / Hybrid / On-site / Internship           */
+/*  Derived from location + title keywords (deterministic).            */
+/* ------------------------------------------------------------------ */
+
+export type WorkMode = "remote" | "hybrid" | "onsite" | "internship";
+
+export interface WorkModeMeta {
+  key: WorkMode;
+  label: string;
+}
+
+/** Display order for the work-type chips. */
+export const WORK_MODES: WorkModeMeta[] = [
+  { key: "remote", label: "Remote" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "onsite", label: "On-site" },
+  { key: "internship", label: "Internship" },
+];
+
+const HYBRID_RE = /\bhybrid\b/i;
+
+/**
+ * Coarse work mode for the filter chips. Internship takes precedence (it's the
+ * strongest signal a seeker filters on), then explicit hybrid, then remote,
+ * else on-site (the default for a named-city role). One job → one mode, so the
+ * faceted counts sum cleanly.
+ */
+export function workMode(job: Job): WorkMode {
+  if (isInternship(job)) return "internship";
+  const hay = `${job.location ?? ""} ${job.title ?? ""}`;
+  if (HYBRID_RE.test(hay)) return "hybrid";
+  if (looksRemote(job)) return "remote";
+  return "onsite";
+}
+
+/** Whether a role has a non-empty salary string. */
+export function hasSalary(job: Job): boolean {
+  return !!job.salary && job.salary.trim().length > 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Salary parsing — a single sortable number (₹/year, best-effort)    */
+/*  Handles the feed's formats deterministically:                      */
+/*    "₹15,000–17,100/month"  → monthly, ×12                           */
+/*    "₹24,000 - ₹65,000 / year" / "INR 35000-40000 annual" → yearly   */
+/*    "₹2.4–7.2 LPA" / "₹12 LPA"  → lakh-per-annum, ×100,000           */
+/*    "INR 10-12 annual"  → bare small numbers ⇒ treated as LPA        */
+/*    "USD 75-150 monthly"  → ×~83 (INR) then ×12                      */
+/*    "₹5,000 lump sum"  → one-off, parsed but de-weighted             */
+/*  Returns 0 when nothing parseable, so such rows sink when sorting.  */
+/* ------------------------------------------------------------------ */
+
+/** Rough USD→INR for sort-only comparability (not shown to the user). */
+const USD_INR = 83;
+
+/**
+ * Parse a salary string into an approximate annualised ₹ figure for sorting.
+ * Uses the *lower* bound of a range (stable, avoids one outlier ceiling
+ * dominating). Returns 0 for unparseable / empty input.
+ */
+export function salaryValue(salary: string | null | undefined): number {
+  if (!salary) return 0;
+  const raw = salary.trim();
+  if (!raw) return 0;
+  const lower = raw.toLowerCase();
+
+  // Pull the numeric tokens (strip thousands separators), keep decimals.
+  const nums = (raw.replace(/,/g, "").match(/\d+(?:\.\d+)?/g) ?? []).map(
+    Number
+  );
+  if (nums.length === 0) return 0;
+  const base = Math.min(...nums); // lower bound of the range
+
+  const isUsd = /usd|\$/.test(lower);
+  const perMonth = /month|\/m\b|p\.?m\b|monthly/.test(lower);
+  const lpa = /\blpa\b|lakh|lac\b/.test(lower);
+  const lumpSum = /lump\s*sum|stipend|one[-\s]?time/.test(lower);
+
+  let annual: number;
+  if (lpa) {
+    annual = base * 100_000; // "₹4.5 LPA" → 450,000
+  } else if (isUsd) {
+    annual = base * USD_INR * (perMonth ? 12 : 1);
+  } else if (perMonth) {
+    annual = base * 12;
+  } else if (base < 100) {
+    // Bare small numbers in an annual context ("INR 10-12 annual") read as LPA.
+    annual = base * 100_000;
+  } else {
+    annual = base; // already an annual rupee figure
+  }
+
+  // De-weight one-off / lump-sum amounts so they don't outrank real salaries.
+  if (lumpSum) annual = Math.min(annual, base);
+  return Math.round(annual);
 }
 
 /** Window (ms) within which a role is flagged "NEW". */

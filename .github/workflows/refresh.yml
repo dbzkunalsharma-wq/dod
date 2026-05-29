@@ -1,9 +1,12 @@
 name: Refresh DOD jobs
 
+# Runs in GitHub's cloud (independent of any PC): scrape every source, rebuild
+# web/public/jobs.json, commit it (keeps the schedule alive + versions the data),
+# and redeploy the live Vercel site via a token.
 on:
   schedule:
-    - cron: "0 */2 * * *"   # every 2 hours
-  workflow_dispatch: {}       # allow manual runs
+    - cron: "0 2 * * *"     # daily ~07:30 IST (02:00 UTC); GitHub may delay it a bit
+  workflow_dispatch: {}       # manual / test runs from the Actions tab
 
 permissions:
   contents: write
@@ -11,6 +14,9 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -18,13 +24,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install deps
+      - name: Install Python deps
         run: pip install -r requirements.txt
 
-      - name: Scrape + classify (rebuild snapshot)
+      - name: Scrape + classify all sources
         run: python poll.py --seed
 
-      - name: Export feed
+      - name: Export feed (web/public/jobs.json)
         run: python export.py
 
       - name: Commit refreshed feed
@@ -32,9 +38,14 @@ jobs:
           git config user.name "dod-bot"
           git config user.email "dod-bot@users.noreply.github.com"
           git add web/public/jobs.json
-          if git diff --staged --quiet; then
-            echo "No changes."
-          else
-            git commit -m "chore: refresh jobs feed"
-            git push
-          fi
+          git commit -m "chore: daily job-feed refresh" || echo "no changes to commit"
+          git push || echo "nothing to push"
+
+      - name: Deploy to Vercel (production)
+        working-directory: web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npm install -g vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel deploy --prod --token="$VERCEL_TOKEN"

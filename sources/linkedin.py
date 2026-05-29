@@ -30,7 +30,7 @@ _QUERIES = [
     "Industrial Designer", "Communication Designer", "Brand Designer",
 ]
 _LOCATION = "India"
-_STARTS = (0, 10)        # two pages (~20 results) per query
+_STARTS = (0, 10, 20, 30)  # four pages (~40 results) per query
 _DELAY = 1.2             # seconds between requests, to stay polite / avoid throttling
 
 

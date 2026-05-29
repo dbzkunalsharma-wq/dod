@@ -10,5 +10,8 @@
   {"company": "CRED", "platform": "lever", "slug": "cred"},
   {"company": "Linear", "platform": "ashby", "slug": "Linear"},
   {"company": "Runway", "platform": "ashby", "slug": "Runway"},
-  {"company": "Ramp", "platform": "ashby", "slug": "Ramp"}
+  {"company": "Ramp", "platform": "ashby", "slug": "Ramp"},
+  {"company": "Groww", "platform": "greenhouse", "slug": "groww"},
+  {"company": "PhonePe", "platform": "greenhouse", "slug": "phonepe"},
+  {"company": "Slice", "platform": "greenhouse", "slug": "slice"}
 ]

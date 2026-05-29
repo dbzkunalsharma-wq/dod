@@ -7,6 +7,7 @@ import {
   isNew,
   postedAgo,
   sourceLabel,
+  topCompanyName,
 } from "@/lib/jobs";
 import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
@@ -19,6 +20,7 @@ import {
   SalaryChip,
   SaveButton,
   StatusSelector,
+  TopBadge,
 } from "./tracker-ui";
 
 export function JobCard({
@@ -33,6 +35,7 @@ export function JobCard({
 }) {
   const meta = DISCIPLINE_MAP[job.discipline];
   const cHref = job.contact ? contactHref(job.contact) : null;
+  const topName = topCompanyName(job.company);
 
   const { isSaved, statusOf, toggleSave, setStatus } = useTracker();
   const saved = isSaved(job.id);
@@ -70,7 +73,9 @@ export function JobCard({
         "transition-all duration-300 ease-out",
         "hover:-translate-y-1 hover:bg-white/[0.09]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0b12]",
-        meta.hoverGlow
+        // Top-company roles get a warm gold ring/glow that overrides the
+        // discipline hover glow; everything else keeps the discipline tint.
+        topName ? "dod-top" : meta.hoverGlow
       )}
       style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
     >
@@ -91,6 +96,7 @@ export function JobCard({
           size="sm"
         />
         <div className="flex shrink-0 items-center gap-2">
+          {topName && <TopBadge name={topName} />}
           {fresh && <NewBadge />}
           <DisciplineBadge discipline={job.discipline} />
           <SaveButton

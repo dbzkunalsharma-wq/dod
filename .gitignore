@@ -8,3 +8,5 @@ web/.next/
 *.log
 *.session
 bot.out
+web/.vercel/
+.vercel/

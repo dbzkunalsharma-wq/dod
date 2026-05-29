@@ -6,7 +6,7 @@ import {
   STATUS_ORDER,
   type JobStatus,
 } from "@/lib/useTracker";
-import { BookmarkIcon, RupeeIcon } from "./icons";
+import { BookmarkIcon, RupeeIcon, StarIcon } from "./icons";
 
 /* ------------------------------------------------------------------ */
 /*  Status palette — subtle colored chips on the dark glass surface    */
@@ -181,6 +181,33 @@ export function NewBadge({ className }: { className?: string }) {
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
       </span>
       New
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Top badge — premium gold/champagne pill for curated top companies  */
+/* ------------------------------------------------------------------ */
+
+export function TopBadge({
+  name,
+  className,
+}: {
+  /** Canonical company name, used for the accessible label. */
+  name?: string | null;
+  className?: string;
+}) {
+  return (
+    <span
+      className={clsx(
+        "dod-top-badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+        className
+      )}
+      title={name ? `${name} — top company` : "Top company"}
+      aria-label={name ? `Top company: ${name}` : "Top company"}
+    >
+      <StarIcon className="h-2.5 w-2.5" />
+      Top
     </span>
   );
 }

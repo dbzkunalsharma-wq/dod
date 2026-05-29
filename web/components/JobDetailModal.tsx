@@ -7,6 +7,7 @@ import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
 import { useTracker } from "@/lib/useTracker";
 import { ApplyAssist } from "./ApplyAssist";
+import { CopyJobLinkButton } from "./board-controls";
 import { CompanyAvatar } from "./CompanyAvatar";
 import { DisciplineBadge } from "./DisciplineBadge";
 import { ArrowUpRightIcon, CloseIcon, PinIcon } from "./icons";
@@ -243,13 +244,13 @@ export function JobDetailModal({
         </div>
 
         {/* sticky action footer */}
-        <div className="dod-glass--silver-edge shrink-0 border-t border-white/10 px-6 py-4 sm:px-8">
+        <div className="dod-glass--silver-edge flex shrink-0 items-center gap-2 border-t border-white/10 px-6 py-4 sm:px-8">
           <a
             href={job.url}
             target="_blank"
             rel="noopener noreferrer"
             className={clsx(
-              "group/apply relative inline-flex w-full items-center justify-center gap-1.5 overflow-hidden rounded-xl",
+              "group/apply relative inline-flex flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-xl",
               "border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white",
               "transition-all duration-200 hover:border-transparent",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0b12]"
@@ -268,6 +269,7 @@ export function JobDetailModal({
             <span className="relative">Apply on {sourceLabel(job.source)}</span>
             <ArrowUpRightIcon className="relative h-4 w-4 transition-transform duration-200 group-hover/apply:translate-x-0.5 group-hover/apply:-translate-y-0.5" />
           </a>
+          <CopyJobLinkButton jobId={job.id} />
         </div>
       </div>
     </div>
