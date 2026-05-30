@@ -5,7 +5,10 @@ name: Refresh DOD jobs
 # and redeploy the live Vercel site via a token.
 on:
   schedule:
-    - cron: "0 2 * * *"     # daily ~07:30 IST (02:00 UTC); GitHub may delay it a bit
+    # 19:00 IST (13:30 UTC). NOTE: GitHub's scheduled runs are best-effort and
+    # often start 15-90 min late (especially on the hour), so the refresh lands
+    # ~7-8 PM IST, not exactly 7:00. Trigger manually anytime from the Actions tab.
+    - cron: "30 13 * * *"
   workflow_dispatch: {}       # manual / test runs from the Actions tab
 
 permissions:
