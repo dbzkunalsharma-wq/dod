@@ -31,6 +31,14 @@ export interface CompanyOutreach {
   domain: string | null;
   /** Number of live roles in the current feed. */
   openRoles: number;
+  /**
+   * Number of this company's roles with a real `posted_at` date within the
+   * last 7 days of the build clock (fresh hiring activity). Computed from
+   * `posted_at` ONLY — never `seen_at` (our scrape time) — so it's honest.
+   */
+  freshRoleCount: number;
+  /** `freshRoleCount > 0` — at least one role was posted in the last 7 days. */
+  postedThisWeek: boolean;
   /** Distinct disciplines this company hires across. */
   disciplines: Discipline[];
   /** Distinct non-blank location strings seen for this company. */
@@ -295,6 +303,18 @@ function extractPostedPhones(jobs: Job[]): string[] {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Parse a role's `posted_at` (an ISO date, or a loose "YYYY-MM-DD HH:MM:SS"
+ * stamp) to epoch ms, or `NaN` when absent/unparseable. Mirrors the feed's
+ * loose date parsing (space → "T"). Used ONLY for the "posted this week"
+ * signal, which must rely on the real posting date — never `seen_at`.
+ */
+function parsePostedAt(value: string | null | undefined): number {
+  if (!value) return NaN;
+  const normalised = value.includes(" ") ? value.replace(" ", "T") : value;
+  return new Date(normalised).getTime();
+}
+
+/**
  * Hiring-intent score in [0, 100], higher = a hotter, more reachable target.
  * Pure and deterministic given a fixed clock. The formula (documented so the
  * placement team can trust the ranking):
@@ -450,6 +470,10 @@ export function buildOutreach(
     let hasSalary = false;
     let latestTime = 0;
     let newestTitle = "";
+    // "Posted this week" is computed from posted_at ONLY (NOT seen_at, which is
+    // our scrape time and would over-count), so the flag reflects real, recent
+    // hiring activity rather than when we happened to index the role.
+    let freshRoleCount = 0;
     for (const job of companyJobs) {
       const t = effectiveTime(job);
       if (t > latestTime) {
@@ -460,6 +484,11 @@ export function buildOutreach(
         const age = now - t;
         if (age >= 0 && age <= 7 * DAY_MS) hasRecent7d = true;
         else if (age >= 0 && age <= 14 * DAY_MS) hasRecent14d = true;
+      }
+      const posted = parsePostedAt(job.posted_at);
+      if (!Number.isNaN(posted)) {
+        const postedAge = now - posted;
+        if (postedAge >= 0 && postedAge <= 7 * DAY_MS) freshRoleCount += 1;
       }
       if (job.salary && job.salary.trim()) hasSalary = true;
     }
@@ -495,6 +524,8 @@ export function buildOutreach(
       logo: c.logo,
       domain,
       openRoles: c.count,
+      freshRoleCount,
+      postedThisWeek: freshRoleCount > 0,
       disciplines: c.disciplines,
       locations: c.locations,
       topRole: newestTitle || c.name,
@@ -531,6 +562,28 @@ export function buildOutreach(
 /* ------------------------------------------------------------------ */
 
 /**
+ * Every domain worth MX-checking across an outreach list: the union of each
+ * row's guessed `domain` PLUS the domain (the part after the last "@") of each
+ * recruiter email the companies published in `postedEmails`. Deduped +
+ * lowercased; blanks dropped. Callers pass this to `mailableDomains` so a
+ * single lookup gates BOTH the guessed addresses and the posted ones — i.e.
+ * every email surfaced anywhere is MX-validated.
+ */
+export function collectOutreachDomains(rows: CompanyOutreach[]): string[] {
+  const out = new Set<string>();
+  for (const row of rows) {
+    if (row.domain) out.add(row.domain.trim().toLowerCase());
+    for (const email of row.postedEmails) {
+      const at = email.lastIndexOf("@");
+      if (at < 0) continue;
+      const dom = email.slice(at + 1).trim().toLowerCase();
+      if (dom) out.add(dom);
+    }
+  }
+  return Array.from(out);
+}
+
+/**
  * Layer DNS MX-verification (from `mailableDomains`) onto an outreach list.
  * Pure: returns NEW row objects and never mutates the inputs.
  *
@@ -542,18 +595,35 @@ export function buildOutreach(
  *     `websiteUrl` are all set to `null`, so a dead guess (e.g.
  *     "Google India" → googleindia.com) never surfaces a fake address.
  *
- * Everything that does NOT depend on the guessed domain is always preserved:
- * the LinkedIn company + TA searches, the recruiter emails/phones the company
- * actually published, the score, and the personalization line.
+ * Additionally, the recruiter emails the COMPANY itself published
+ * (`postedEmails`) are filtered to only those whose domain (the part after the
+ * last "@") is in `mailable` — so a published address on a dead/typo domain is
+ * dropped too. `mailable` must therefore include the posted-email domains
+ * (the callers feed in the union of guessed + posted domains). `postedPhones`
+ * are left untouched (no DNS to check).
+ *
+ * Everything else that does NOT depend on a mailable domain is preserved: the
+ * LinkedIn company + TA searches, the published phones, the score, the
+ * freshness signals, and the personalization line.
  */
 export function applyDomainVerification(
   rows: CompanyOutreach[],
   mailable: Set<string>
 ): CompanyOutreach[] {
+  const emailDomainMailable = (email: string): boolean => {
+    const at = email.lastIndexOf("@");
+    if (at < 0) return false;
+    return mailable.has(email.slice(at + 1).trim().toLowerCase());
+  };
+
   return rows.map((row) => {
+    // MX-filter the company-published emails too: drop any whose domain isn't
+    // mailable, so a published typo/dead-domain address never surfaces.
+    const postedEmails = row.postedEmails.filter(emailDomainMailable);
+
     const verified = !!row.domain && mailable.has(row.domain.toLowerCase());
     if (verified) {
-      return { ...row, domainVerified: true };
+      return { ...row, domainVerified: true, postedEmails };
     }
     return {
       ...row,
@@ -561,6 +631,7 @@ export function applyDomainVerification(
       emails: null,
       careersUrl: null,
       websiteUrl: null,
+      postedEmails,
     };
   });
 }
@@ -590,6 +661,8 @@ export const OUTREACH_CSV_COLUMNS = [
   "personalization",
   "draft_email",
   "domain_verified",
+  "posted_this_week",
+  "fresh_role_count",
 ] as const;
 
 /** RFC-4180 quote: wrap in double-quotes, doubling any embedded quotes. */
@@ -624,6 +697,8 @@ export function outreachToCsvRow(c: CompanyOutreach, draftEmail: string): string
     c.personalization,
     draftEmail,
     c.domainVerified ? "true" : "false",
+    c.postedThisWeek ? "true" : "false",
+    String(c.freshRoleCount),
   ];
   return cells.map((v) => csvQuote(v ?? "")).join(",");
 }

@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { OutreachTable } from "@/components/OutreachTable";
 import { PageNav } from "@/components/PageNav";
 import { loadAllJobs } from "@/lib/jobs-data";
-import { applyDomainVerification, buildOutreach } from "@/lib/outreach";
+import {
+  applyDomainVerification,
+  buildOutreach,
+  collectOutreachDomains,
+} from "@/lib/outreach";
 import { mailableDomains } from "@/lib/verify-domains";
 
 /**
@@ -28,11 +32,12 @@ export const metadata: Metadata = {
 export default async function OutreachPage() {
   const jobs = await loadAllJobs();
   const rows = buildOutreach(jobs);
-  // MX-verify the guessed domains at build time, then suppress emails for any
-  // that don't actually resolve / accept mail (see applyDomainVerification).
-  const mailable = await mailableDomains(
-    rows.map((r) => r.domain).filter(Boolean) as string[]
-  );
+  // MX-verify at build time the UNION of every guessed `domain` PLUS the domain
+  // of every recruiter email the companies published (the part after "@"), in
+  // one deduped lookup. applyDomainVerification then suppresses both guessed
+  // emails AND posted emails sitting on domains that don't resolve / accept
+  // mail — so every address surfaced anywhere is MX-validated.
+  const mailable = await mailableDomains(collectOutreachDomains(rows));
   const companies = applyDomainVerification(rows, mailable);
 
   const withDomain = companies.filter((c) => c.domainVerified).length;

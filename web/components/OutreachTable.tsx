@@ -24,7 +24,7 @@ import {
 } from "./icons";
 import { TopBadge } from "./tracker-ui";
 
-type SortMode = "score" | "roles" | "name";
+type SortMode = "score" | "fresh" | "roles" | "name";
 type StatusFilter = "all" | Exclude<OutreachStatus, "none">;
 
 /* ------------------------------------------------------------------ */
@@ -251,7 +251,15 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("score");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [freshOnly, setFreshOnly] = useState(false);
   const { statusOf, setStatus, countOf } = useOutreach();
+
+  // How many companies have a role posted in the last 7 days (real posting
+  // dates) — drives the "Posted this week" toggle's live count.
+  const freshCount = useMemo(
+    () => companies.filter((c) => c.postedThisWeek).length,
+    [companies]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -270,6 +278,10 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
       list = list.filter((c) => statusOf(c.slug) === statusFilter);
     }
 
+    if (freshOnly) {
+      list = list.filter((c) => c.postedThisWeek);
+    }
+
     const sorted = [...list];
     if (sort === "name") {
       sorted.sort((a, b) =>
@@ -279,6 +291,15 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
       sorted.sort(
         (a, b) =>
           b.openRoles - a.openRoles ||
+          b.score - a.score ||
+          a.name.localeCompare(b.name, "en", { sensitivity: "base" })
+      );
+    } else if (sort === "fresh") {
+      // "Freshest" — posted-this-week first, then most fresh roles, then score.
+      sorted.sort(
+        (a, b) =>
+          Number(b.postedThisWeek) - Number(a.postedThisWeek) ||
+          b.freshRoleCount - a.freshRoleCount ||
           b.score - a.score ||
           a.name.localeCompare(b.name, "en", { sensitivity: "base" })
       );
@@ -292,7 +313,7 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
       );
     }
     return sorted;
-  }, [companies, query, sort, statusFilter, statusOf]);
+  }, [companies, query, sort, statusFilter, freshOnly, statusOf]);
 
   const statusCounts = OUTREACH_STATUS_ORDER.map((s) => ({
     status: s,
@@ -343,6 +364,7 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
               )}
             >
               <option value="score">Hiring-intent score</option>
+              <option value="fresh">Freshest</option>
               <option value="roles">Most roles</option>
               <option value="name">Name A–Z</option>
             </select>
@@ -375,6 +397,21 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
               <span className="tabular-nums text-white/45">({count})</span>
             </FilterPill>
           ))}
+
+          {/* freshness toggle — orthogonal to status, so set apart by a divider */}
+          <span
+            aria-hidden="true"
+            className="mx-0.5 h-4 w-px self-center bg-[var(--silver-line)]"
+          />
+          <FilterPill
+            active={freshOnly}
+            dot="bg-emerald-400"
+            onClick={() => setFreshOnly((v) => !v)}
+            title="Show only companies with a role posted in the last 7 days (fresh hiring activity), from real posting dates — not never-seen-before."
+          >
+            Posted this week
+            <span className="tabular-nums text-white/45">· {freshCount}</span>
+          </FilterPill>
         </div>
       </div>
 
@@ -459,11 +496,13 @@ function FilterPill({
   active,
   dot,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   dot?: string;
   onClick: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -471,6 +510,7 @@ function FilterPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      title={title}
       className={clsx(
         "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
@@ -488,6 +528,23 @@ function FilterPill({
 /* ------------------------------------------------------------------ */
 /*  Shared cell sub-components                                         */
 /* ------------------------------------------------------------------ */
+
+/** Green "● N this week" pill for companies with a role posted in the last 7d. */
+function FreshBadge({ company }: { company: CompanyOutreach }) {
+  if (!company.postedThisWeek) return null;
+  const n = company.freshRoleCount;
+  return (
+    <span
+      title={`${n} ${
+        n === 1 ? "role" : "roles"
+      } posted in the last 7 days (fresh hiring activity, from real posting dates)`}
+      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-inset ring-emerald-400/25"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      {n} this week
+    </span>
+  );
+}
 
 function DisciplineDots({ company }: { company: CompanyOutreach }) {
   if (company.disciplines.length === 0) return null;
@@ -659,9 +716,10 @@ function OutreachRow({
               </Link>
               {company.isTop && <TopBadge name={company.name} />}
             </div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-white/55">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/55">
               <DisciplineDots company={company} />
               <span>{company.city}</span>
+              <FreshBadge company={company} />
             </div>
             {company.domainVerified && company.domain && (
               <p className="mt-0.5 truncate text-xs text-white/40">
@@ -746,6 +804,7 @@ function OutreachCard({
                 · {company.openRoles}{" "}
                 {company.openRoles === 1 ? "role" : "roles"}
               </span>
+              <FreshBadge company={company} />
             </div>
           </div>
         </div>
