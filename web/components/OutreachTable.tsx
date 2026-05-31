@@ -203,10 +203,17 @@ function ScorePill({ score, reasons }: { score: number; reasons: string[] }) {
 /* ------------------------------------------------------------------ */
 
 function ActionsBar({ rows }: { rows: CompanyOutreach[] }) {
+  // Only MX-verified domains are worth feeding to Hunter / Apollo — unresolved
+  // guesses are dropped, matching what's surfaced in the table.
   const domains = useMemo(
     () =>
       Array.from(
-        new Set(rows.map((r) => r.domain).filter((d): d is string => !!d))
+        new Set(
+          rows
+            .filter((r) => r.domainVerified)
+            .map((r) => r.domain)
+            .filter((d): d is string => !!d)
+        )
       ),
     [rows]
   );
@@ -514,9 +521,21 @@ function ContactCell({ company }: { company: CompanyOutreach }) {
           <CopyButton value={emails.hr} label={`Copy ${emails.hr}`}>
             hr@
           </CopyButton>
+          <span
+            title="Domain is MX-verified — it resolves and accepts mail"
+            aria-label="MX-verified domain"
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-300/80"
+          >
+            <CheckIcon className="h-3 w-3" />
+          </span>
         </div>
       ) : (
-        <span className="text-xs text-white/40">No domain</span>
+        <span
+          title="No mailable domain (the guessed domain didn't resolve) — use the LinkedIn search or Hunter / Apollo instead"
+          className="text-xs text-white/40"
+        >
+          — <span className="text-white/30">use LinkedIn / Hunter</span>
+        </span>
       )}
 
       {postedEmails.length > 0 && (
@@ -644,7 +663,7 @@ function OutreachRow({
               <DisciplineDots company={company} />
               <span>{company.city}</span>
             </div>
-            {company.domain && (
+            {company.domainVerified && company.domain && (
               <p className="mt-0.5 truncate text-xs text-white/40">
                 {company.domain}
               </p>

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { OutreachTable } from "@/components/OutreachTable";
 import { PageNav } from "@/components/PageNav";
 import { loadAllJobs } from "@/lib/jobs-data";
-import { buildOutreach } from "@/lib/outreach";
+import { applyDomainVerification, buildOutreach } from "@/lib/outreach";
+import { mailableDomains } from "@/lib/verify-domains";
 
 /**
  * Placement outreach (server) — an INTERNAL, UNLISTED tool for a college
@@ -26,9 +27,15 @@ export const metadata: Metadata = {
 
 export default async function OutreachPage() {
   const jobs = await loadAllJobs();
-  const companies = buildOutreach(jobs);
+  const rows = buildOutreach(jobs);
+  // MX-verify the guessed domains at build time, then suppress emails for any
+  // that don't actually resolve / accept mail (see applyDomainVerification).
+  const mailable = await mailableDomains(
+    rows.map((r) => r.domain).filter(Boolean) as string[]
+  );
+  const companies = applyDomainVerification(rows, mailable);
 
-  const withDomain = companies.filter((c) => c.domain).length;
+  const withDomain = companies.filter((c) => c.domainVerified).length;
   const withPosted = companies.filter(
     (c) => c.postedEmails.length > 0 || c.postedPhones.length > 0
   ).length;
@@ -66,12 +73,16 @@ export default async function OutreachPage() {
                 hr@
               </code>{" "}
               are common address patterns derived from each company&rsquo;s
-              domain — <span className="text-white/85">verify before bulk-sending</span>.
-              Green badges are recruiter emails the company itself published in a
-              job post (already verified by them). For verified individual
-              recruiter emails at scale, hit{" "}
+              domain, now{" "}
+              <span className="text-white/85">
+                MX-verified — unresolved domain guesses are dropped
+              </span>
+              , so the addresses shown can actually receive mail. Green badges
+              are recruiter emails the company itself published in a job post
+              (already verified by them). For verified individual recruiter
+              emails at scale, hit{" "}
               <span className="font-medium text-white/85">Copy all domains</span>{" "}
-              (or download the CSV) and run the domains through{" "}
+              (or download the CSV) and run the verified domains through{" "}
               <a
                 href="https://hunter.io"
                 target="_blank"
@@ -92,8 +103,8 @@ export default async function OutreachPage() {
               .
             </p>
             <p className="mt-2 text-xs text-white/45">
-              {withDomain.toLocaleString("en-IN")} companies have a guessed domain
-              · {withPosted.toLocaleString("en-IN")} published a direct
+              {withDomain.toLocaleString("en-IN")} companies have an MX-verified
+              domain · {withPosted.toLocaleString("en-IN")} published a direct
               email/phone in a post. Status is saved locally in your browser only.
             </p>
           </div>

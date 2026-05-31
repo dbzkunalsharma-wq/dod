@@ -60,6 +60,14 @@ export interface CompanyOutreach {
   careersUrl: string | null;
   /** `https://<domain>` when a domain is known, else null. */
   websiteUrl: string | null;
+  /**
+   * Whether `domain` resolved with ≥1 MX record (i.e. can actually receive
+   * mail). Set by `applyDomainVerification`; `buildOutreach` always leaves it
+   * `false` (it does no network I/O). When `false`, the guessed `emails` /
+   * `careersUrl` / `websiteUrl` are suppressed so we never surface a fake
+   * address for a domain that doesn't exist.
+   */
+  domainVerified: boolean;
   /** Reliable LinkedIn *company* search URL (never a guessed vanity slug). */
   linkedinCompanySearch: string;
   /** LinkedIn *people* search for this company's TA / recruiters / HR. */
@@ -497,6 +505,9 @@ export function buildOutreach(
       emails,
       careersUrl: domain ? `https://${domain}/careers` : null,
       websiteUrl: domain ? `https://${domain}` : null,
+      // Not verified yet — buildOutreach does no network I/O. A caller layers
+      // MX verification on top via `applyDomainVerification`.
+      domainVerified: false,
       linkedinCompanySearch,
       linkedinTaSearch,
       postedEmails,
@@ -513,6 +524,45 @@ export function buildOutreach(
   );
 
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/*  MX verification overlay                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Layer DNS MX-verification (from `mailableDomains`) onto an outreach list.
+ * Pure: returns NEW row objects and never mutates the inputs.
+ *
+ * For each row:
+ *   - domain present AND in `mailable` → `domainVerified = true`, and the
+ *     guessed `emails` / `careersUrl` / `websiteUrl` are kept (the domain
+ *     exists and accepts mail, so the conventional mailboxes are worth a try).
+ *   - otherwise → `domainVerified = false`, and `emails` / `careersUrl` /
+ *     `websiteUrl` are all set to `null`, so a dead guess (e.g.
+ *     "Google India" → googleindia.com) never surfaces a fake address.
+ *
+ * Everything that does NOT depend on the guessed domain is always preserved:
+ * the LinkedIn company + TA searches, the recruiter emails/phones the company
+ * actually published, the score, and the personalization line.
+ */
+export function applyDomainVerification(
+  rows: CompanyOutreach[],
+  mailable: Set<string>
+): CompanyOutreach[] {
+  return rows.map((row) => {
+    const verified = !!row.domain && mailable.has(row.domain.toLowerCase());
+    if (verified) {
+      return { ...row, domainVerified: true };
+    }
+    return {
+      ...row,
+      domainVerified: false,
+      emails: null,
+      careersUrl: null,
+      websiteUrl: null,
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -539,6 +589,7 @@ export const OUTREACH_CSV_COLUMNS = [
   "score_reasons",
   "personalization",
   "draft_email",
+  "domain_verified",
 ] as const;
 
 /** RFC-4180 quote: wrap in double-quotes, doubling any embedded quotes. */
@@ -572,6 +623,7 @@ export function outreachToCsvRow(c: CompanyOutreach, draftEmail: string): string
     c.scoreReasons.join(" | "),
     c.personalization,
     draftEmail,
+    c.domainVerified ? "true" : "false",
   ];
   return cells.map((v) => csvQuote(v ?? "")).join(",");
 }
