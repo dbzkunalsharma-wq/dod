@@ -4,6 +4,12 @@ classify(title, description) decides whether a posting is an in-scope design
 role and, if so, which of the four disciplines in disciplines.py it belongs to.
 Rules are keyword/taxonomy based on purpose: the same input must always yield
 the same label, and the keyword sets below are meant to be edited directly.
+
+Scope note: we cast a WIDE net across modern design roles — research, content/
+UX writing, service, design systems, design ops, motion/animation, spatial, and
+design leadership all count — but keep the long-standing vertical exclusions
+(software/hardware engineering, recruiting, interior, fashion/apparel/textile,
+jewellery, architecture, game). Flip any of those in by editing NON_DESIGN.
 """
 
 import re
@@ -22,6 +28,7 @@ NON_DESIGN = [
     "data scientist",
     "marketing manager",
     "sales",
+    "content strategist",       # marketing-leaning, not design (UX writing IS in-scope below)
 
     # --- Software / hardware ENGINEERING (incl. "...design" phrasings) ---
     # These read as "design" but are fundamentally engineering. Substrings
@@ -84,14 +91,11 @@ NON_DESIGN = [
     "set design",
     "set designer",
     "instructional design",
-    "game designer",            # game design out of scope for v1
+    "game designer",            # game vertical out of scope
     "game design",
     " game ",                   # any game-vertical title (UI/art/level/etc.)
     "level designer",
     "narrative designer",
-    "ux writer",                # content discipline, out of scope for v1
-    "content designer",         # out of scope for v1
-    "content strategist",
 ]
 
 # --- Physical-design signals ------------------------------------------------
@@ -118,7 +122,7 @@ PHYSICAL_SIGNALS = [
 
 # --- Digital-design signals -------------------------------------------------
 # Used to keep a bare "product designer" digital and to disambiguate
-# "visual designer" toward UI/UX.
+# "visual designer" / leadership toward UI/UX.
 DIGITAL_SIGNALS = [
     "figma",
     "sketch",
@@ -132,10 +136,12 @@ DIGITAL_SIGNALS = [
     "web app",
     "mobile",
     "digital product",
+    "usability",
+    "user experience",
 ]
 
 # --- Brand / print signals --------------------------------------------------
-# Pushes "visual designer" toward communication.
+# Pushes "visual designer" / leadership toward communication.
 BRAND_SIGNALS = [
     "brand",
     "branding",
@@ -154,10 +160,20 @@ INDUSTRIAL_TITLES = [
     "industrial designer",
     "industrial design",
     "cmf designer",
+    "cmf design",
     "footwear designer",
     "furniture designer",
     "toy designer",
     "automotive designer",
+    "transportation designer",
+    "transportation design",
+    "mobility designer",
+    "spatial designer",
+    "spatial design",
+    "exhibition designer",
+    "exhibition design",
+    "experiential designer",
+    "experiential design",
 ]
 
 UIUX_TITLES = [
@@ -165,27 +181,84 @@ UIUX_TITLES = [
     "ux/ui",
     "ui designer",
     "ux designer",
-    "ui designer",
+    "ui ux designer",
+    "ux ui designer",
     "interaction designer",
+    "interaction design",
+    "interface designer",
     "ux researcher",
+    "ux research",
     "user researcher",
-    "web designer",
+    "user research",
+    "design researcher",
+    "design research",
+    "user experience designer",
+    "experience designer",
+    "service designer",
+    "service design",
+    "design systems",
+    "design system designer",
+    "content designer",       # content design / UX writing IS in-scope design now
+    "content design",
+    "ux writer",
+    "ux writing",
+    "conversation designer",
+    "conversational designer",
     "design technologist",
+    "design ops",
+    "design operations",
+    "web designer",
+    "product design",         # umbrella; flips to industrial on physical signals (handled below)
 ]
 
 COMMUNICATION_TITLES = [
     "graphic designer",
+    "graphic design",
     "communication design",
     "communications design",
+    "visual communication",
     "brand designer",
+    "brand design",
+    "branding",
     "motion designer",
     "motion graphics",
+    "motion graphic",
+    "motion design",
+    "animator",
+    "animation designer",
     "illustrator",
+    "illustration",
     "typographer",
+    "typography",
     "editorial designer",
     "packaging designer",
     "layout designer",
+    "presentation designer",
+    "social media designer",
     "art director",
+    "creative director",
+    "creative designer",
+]
+
+# --- Design leadership ------------------------------------------------------
+# Design-leadership titles are in-scope; discipline is decided by context
+# (physical -> industrial, brand-not-digital -> communication, else UI/UX).
+# These are SPECIFIC design-leadership phrases so generic managers/directors
+# (product/engineering/etc.) are NOT swept in.
+DESIGN_LEADERSHIP = [
+    "design lead",
+    "lead designer",
+    "design manager",
+    "design director",
+    "director of design",
+    "head of design",
+    "design head",
+    "vp design",
+    "vp of design",
+    "vice president design",
+    "principal designer",
+    "staff designer",
+    "design principal",
 ]
 
 
@@ -289,18 +362,27 @@ def classify(title: str, description: str = "") -> str | None:
             return "communication"
         return "uiux"
 
-    # Interface/interaction specialists.
+    # "Product Designer" umbrella flips to industrial when physical signals
+    # appear (decide before the generic UI/UX sweep, which now lists
+    # "product design" as a digital-product signal).
+    if "product designer" in t or "product design" in t:
+        return "industrial" if physical else "product"
+
+    # Interface / experience / research / content / service specialists.
     if _has_any(t, UIUX_TITLES):
         return "uiux"
 
-    # Graphic / brand / visual communication.
+    # Graphic / brand / motion / visual communication.
     if _has_any(t, COMMUNICATION_TITLES):
         return "communication"
 
-    # "Product Designer" umbrella: industrial when physical signals appear,
-    # otherwise the digital product discipline.
-    if "product designer" in t or "product design" in t:
-        return "industrial" if physical else "product"
+    # Design leadership: in-scope; discipline by context.
+    if _has_any(t, DESIGN_LEADERSHIP):
+        if physical:
+            return "industrial"
+        if brand and not digital:
+            return "communication"
+        return "uiux"
 
     # Thin titles: a bare "designer" with no qualifier needs a discipline or
     # tool signal somewhere to be classifiable; otherwise it is too ambiguous.
@@ -325,18 +407,41 @@ if __name__ == "__main__":
     # Positive: clear discipline titles.
     assert classify("Senior UI/UX Designer") == "uiux"
     assert classify("UX Researcher") == "uiux"
+    assert classify("User Researcher") == "uiux"
+    assert classify("Design Researcher") == "uiux"
     assert classify("Interaction Designer") == "uiux"
     assert classify("Web Designer") == "uiux"
     assert classify("Design Technologist") == "uiux"
+    assert classify("Service Designer") == "uiux"
+    assert classify("User Experience Designer") == "uiux"
+    assert classify("Experience Designer") == "uiux"
+    assert classify("Design Systems Designer") == "uiux"
+    assert classify("UX Writer") == "uiux"               # was excluded — now in-scope
+    assert classify("Content Designer") == "uiux"        # was excluded — now in-scope
+    assert classify("Conversation Designer") == "uiux"
+    assert classify("Design Ops Manager", "design operations") == "uiux"
     assert classify("Graphic Designer") == "communication"
     assert classify("Motion Graphics Designer") == "communication"
+    assert classify("Animator") == "communication"
     assert classify("Brand Designer") == "communication"
     assert classify("Illustrator") == "communication"
     assert classify("Communication Designer") == "communication"
+    assert classify("Presentation Designer") == "communication"
+    assert classify("Creative Director") == "communication"
     assert classify("Industrial Designer") == "industrial"
     assert classify("CMF Designer") == "industrial"
     assert classify("Footwear Designer") == "industrial"
+    assert classify("Transportation Designer") == "industrial"
+    assert classify("Spatial Designer") == "industrial"
+    assert classify("Exhibition Designer") == "industrial"
     assert classify("Product Designer") == "product"
+
+    # Design leadership by context.
+    assert classify("Design Manager") == "uiux"
+    assert classify("Head of Design") == "uiux"
+    assert classify("Design Director") == "uiux"
+    assert classify("Design Lead", "branding and print identity") == "communication"
+    assert classify("Design Lead", "SolidWorks, CAD, injection moulding") == "industrial"
 
     # Disambiguation: Product Designer flips to industrial with physical signals.
     assert classify("Product Designer", "Expert in SolidWorks, CAD and injection molding") == "industrial"
@@ -364,6 +469,7 @@ if __name__ == "__main__":
     assert classify("Data Analyst") is None
     assert classify("Data Scientist") is None
     assert classify("Business Analyst") is None
+    assert classify("Content Strategist") is None        # marketing-leaning, still out
 
     # Negative: software / hardware ENGINEERING roles, including ones whose
     # titles literally contain "design".
@@ -377,7 +483,7 @@ if __name__ == "__main__":
     assert classify("Full Stack Developer") is None
     assert classify("Web Developer") is None
     assert classify("Software Developer") is None
-    # The real false positive: "Engineer I - SW Design" had been -> product.
+    assert classify("UX Engineer") is None               # engineer token -> out (precision)
     assert classify("Engineer I - SW Design", "C++, embedded software, RTOS") is None
     assert classify("SW Design Engineer") is None
     assert classify("Software Design Engineer") is None
@@ -388,7 +494,6 @@ if __name__ == "__main__":
     assert classify("Hardware Design Engineer") is None
     assert classify("CAD Engineer") is None
     assert classify("Firmware Engineer") is None
-    # A bare "Designer" whose description is pure software must not leak through.
     assert classify("Designer", "Build our React app and design the software architecture") is None
 
     # Negative: recruiting / HR.
@@ -418,17 +523,13 @@ if __name__ == "__main__":
     assert classify("Game UI Designer") is None
     assert classify("Level Designer") is None
     assert classify("Narrative Designer") is None
-    assert classify("UX Writer") is None
-    assert classify("Content Designer") is None
-    assert classify("Content Strategist") is None
 
     # Negative: "design" bolted onto a sales/marketing role.
     assert classify("Design (Sales)") is None
     assert classify("Design - Marketing") is None
     assert classify("Sales Designer") is None
 
-    # Guard: genuine design titles are NOT caught by the new exclusions.
-    assert classify("Design Technologist") == "uiux"
+    # Guard: genuine design titles are NOT caught by the exclusions.
     assert classify("UX Designer", "collaborate with engineers and developers") == "uiux"
     assert classify("Graphic Designer", "work with the marketing team on campaigns") == "communication"
     assert classify("Industrial Designer", "automotive interior surfaces") == "industrial"

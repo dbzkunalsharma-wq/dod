@@ -29,14 +29,19 @@ _HEADERS = {
 }
 
 # Design-discipline queries; the classifier still makes the final call per result.
+# Pages carry zero overlap (verified through start=75), so each extra keyword/page is
+# net-new coverage.
 _QUERIES = [
     "UI UX designer", "graphic designer", "product designer",
     "visual designer", "motion designer", "industrial designer",
     "interaction designer", "communication designer",
+    "service designer", "design systems", "ux researcher", "branding",
+    "illustrator", "design intern", "creative", "art director",
+    "ui developer", "packaging designer",
 ]
 _LOCATION = "India"
 _LIMIT = 25
-_STARTS = (0, 25)        # two pages (~50 results) per query
+_STARTS = (0, 25, 50)    # three pages (~75 results) per query
 _DELAY = 1.0             # seconds between requests, to stay polite / avoid throttling
 
 

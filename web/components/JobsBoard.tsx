@@ -12,10 +12,11 @@ import {
   locationKey,
   salaryValue,
   SOURCE_ORDER,
+  specialization as jobSpecialization,
   withinDays,
   workMode as jobWorkMode,
 } from "@/lib/jobs";
-import type { ExperienceLevel } from "@/lib/jobs";
+import type { ExperienceLevel, Specialization } from "@/lib/jobs";
 import type { Discipline, Job, JobsFeed, Source } from "@/lib/types";
 import { DATE_FILTER_DAYS } from "@/lib/useFilterState";
 import { useFilterState } from "@/lib/useFilterState";
@@ -28,6 +29,7 @@ import {
   FilterChips,
   LocationFilterSelect,
   SortControl,
+  SpecializationFilter,
   StatusFilterChips,
   WorkTypeFilter,
 } from "./board-controls";
@@ -82,6 +84,15 @@ function matchesExperience(
   return selected.has(jobExperienceLevel(job));
 }
 
+/** Whether a job matches the selected specializations (empty set = any). */
+function matchesSpecialization(
+  job: Job,
+  selected: Set<Specialization>
+): boolean {
+  if (selected.size === 0) return true;
+  return selected.has(jobSpecialization(job));
+}
+
 /** Compare for the active sort mode. */
 function compareBySort(a: Job, b: Job, sort: string): number {
   if (sort === "top") {
@@ -131,6 +142,7 @@ function JobsBoardInner() {
     sort,
     datePosted,
     experience,
+    specializations,
   } = f;
 
   // Save + status tracking (localStorage).
@@ -218,11 +230,12 @@ function JobsBoardInner() {
       if (location !== "all" && locationKey(job) !== location) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
       if (!matchesExperience(job, experience)) continue;
+      if (!matchesSpecialization(job, specializations)) continue;
       if (!passesCommon(job)) continue;
       counts[job.discipline] += 1;
     }
     return counts;
-  }, [allJobs, search, sources, location, workMode, experience, passesCommon]);
+  }, [allJobs, search, sources, location, workMode, experience, specializations, passesCommon]);
 
   const disciplineTotal = useMemo(
     () =>
@@ -239,11 +252,12 @@ function JobsBoardInner() {
       if (location !== "all" && locationKey(job) !== location) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
       if (!matchesExperience(job, experience)) continue;
+      if (!matchesSpecialization(job, specializations)) continue;
       if (!passesCommon(job)) continue;
       counts[job.source] = (counts[job.source] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, location, workMode, experience, passesCommon]);
+  }, [allJobs, discipline, search, location, workMode, experience, specializations, passesCommon]);
 
   // location counts: respect every *other* facet, ignore location
   const locationCounts = useMemo(() => {
@@ -254,11 +268,12 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
       if (!matchesExperience(job, experience)) continue;
+      if (!matchesSpecialization(job, specializations)) continue;
       if (!passesCommon(job)) continue;
       counts[locationKey(job)] = (counts[locationKey(job)] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, sources, workMode, experience, passesCommon]);
+  }, [allJobs, discipline, search, sources, workMode, experience, specializations, passesCommon]);
 
   // work-mode counts: respect every *other* facet, ignore work mode
   const workModeCounts = useMemo(() => {
@@ -269,11 +284,12 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (location !== "all" && locationKey(job) !== location) continue;
       if (!matchesExperience(job, experience)) continue;
+      if (!matchesSpecialization(job, specializations)) continue;
       if (!passesCommon(job)) continue;
       counts[jobWorkMode(job)] = (counts[jobWorkMode(job)] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, sources, location, experience, passesCommon]);
+  }, [allJobs, discipline, search, sources, location, experience, specializations, passesCommon]);
 
   // experience counts: respect every *other* facet, ignore experience itself
   const experienceCounts = useMemo(() => {
@@ -284,12 +300,40 @@ function JobsBoardInner() {
       if (sources.size > 0 && !sources.has(job.source)) continue;
       if (location !== "all" && locationKey(job) !== location) continue;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!matchesSpecialization(job, specializations)) continue;
       if (!passesCommon(job)) continue;
       const lvl = jobExperienceLevel(job);
       counts[lvl] = (counts[lvl] ?? 0) + 1;
     }
     return counts;
-  }, [allJobs, discipline, search, sources, location, workMode, passesCommon]);
+  }, [allJobs, discipline, search, sources, location, workMode, specializations, passesCommon]);
+
+  // specialization counts: respect every *other* facet, ignore specialization
+  const specializationCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const job of allJobs) {
+      if (discipline !== "all" && job.discipline !== discipline) continue;
+      if (!matchesSearch(job, search)) continue;
+      if (sources.size > 0 && !sources.has(job.source)) continue;
+      if (location !== "all" && locationKey(job) !== location) continue;
+      if (workMode !== "all" && jobWorkMode(job) !== workMode) continue;
+      if (!matchesExperience(job, experience)) continue;
+      if (!passesCommon(job)) continue;
+      const spec = jobSpecialization(job);
+      counts[spec] = (counts[spec] ?? 0) + 1;
+    }
+    return counts;
+  }, [allJobs, discipline, search, sources, location, workMode, experience, passesCommon]);
+
+  // Whether to surface the specialization row at all: at least one reachable
+  // specialization (count > 0) or an already-selected one (so an active chip
+  // never disappears). Mirrors the visibility logic inside SpecializationFilter.
+  const hasSpecializations = useMemo(
+    () =>
+      Object.values(specializationCounts).some((n) => n > 0) ||
+      specializations.size > 0,
+    [specializationCounts, specializations]
+  );
 
   // which source chips to show (present anywhere in the feed), in fixed order
   const availableSources = useMemo(() => {
@@ -313,10 +357,11 @@ function JobsBoardInner() {
       if (location !== "all" && locationKey(job) !== location) return false;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) return false;
       if (!matchesExperience(job, experience)) return false;
+      if (!matchesSpecialization(job, specializations)) return false;
       if (!passesCommonNoTop(job)) return false;
       return true;
     });
-  }, [allJobs, discipline, search, sources, location, workMode, experience, passesCommonNoTop]);
+  }, [allJobs, discipline, search, sources, location, workMode, experience, specializations, passesCommonNoTop]);
   const topCount = topJobs.length;
 
   /* ------------------------------ final list ----------------------------- */
@@ -328,6 +373,7 @@ function JobsBoardInner() {
       if (location !== "all" && locationKey(job) !== location) return false;
       if (workMode !== "all" && jobWorkMode(job) !== workMode) return false;
       if (!matchesExperience(job, experience)) return false;
+      if (!matchesSpecialization(job, specializations)) return false;
       if (!passesCommon(job)) return false;
       return true;
     });
@@ -336,7 +382,7 @@ function JobsBoardInner() {
       filtered.sort((a, b) => compareBySort(a, b, sort));
     }
     return filtered;
-  }, [allJobs, discipline, search, sources, location, workMode, experience, sort, passesCommon]);
+  }, [allJobs, discipline, search, sources, location, workMode, experience, specializations, sort, passesCommon]);
 
   /* ---------------------------- pagination ------------------------------- */
   // Reveal a window of cards; grow it on scroll / "Load more". The window
@@ -358,6 +404,7 @@ function JobsBoardInner() {
         sort,
         datePosted,
         Array.from(experience).sort().join(","),
+        Array.from(specializations).sort().join(","),
         // saved/status views depend on the tracker map, so fold its size in
         savedOnly || status !== "all" ? tracker.savedCount : 0,
       ].join("|"),
@@ -375,6 +422,7 @@ function JobsBoardInner() {
       sort,
       datePosted,
       experience,
+      specializations,
       tracker.savedCount,
     ]
   );
@@ -505,6 +553,19 @@ function JobsBoardInner() {
                 />
               </div>
 
+              {/* specialization chips (role-type depth) — only when the
+                  current view actually has typed roles to drill into */}
+              {hasSpecializations && (
+                <div className="border-t border-[var(--silver-line)] pt-3">
+                  <SpecializationFilter
+                    selected={specializations}
+                    counts={specializationCounts}
+                    onToggle={f.toggleSpecialization}
+                    onClear={f.clearSpecializations}
+                  />
+                </div>
+              )}
+
               {/* fresher / has-salary / saved toggles + share */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--silver-line)] pt-3">
                 <FilterChips
@@ -564,6 +625,7 @@ function JobsBoardInner() {
               status={status}
               datePosted={datePosted}
               experience={experience}
+              specializations={specializations}
               onClearDiscipline={() => f.setDiscipline("all")}
               onClearSearch={() => f.setSearch("")}
               onRemoveSource={(s) => f.toggleSource(s)}
@@ -576,6 +638,7 @@ function JobsBoardInner() {
               onClearStatus={() => f.setStatus("all")}
               onClearDatePosted={() => f.setDatePosted("any")}
               onRemoveExperience={(level) => f.toggleExperience(level)}
+              onRemoveSpecialization={(key) => f.toggleSpecialization(key)}
               onClearAll={resetAll}
             />
           </div>

@@ -3,7 +3,13 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Discipline, Source } from "./types";
-import type { ExperienceLevel, LocationKey, WorkMode } from "./jobs";
+import type {
+  ExperienceLevel,
+  LocationKey,
+  Specialization,
+  WorkMode,
+} from "./jobs";
+import { SPECIALIZATIONS } from "./jobs";
 import type { JobStatus } from "./useTracker";
 
 /**
@@ -31,6 +37,7 @@ import type { JobStatus } from "./useTracker";
  *   top=1                                      top-companies-only toggle
  *   posted=24h|7d|30d                          date-posted window (default "any")
  *   exp=intern,entry,mid,senior                experience levels (CSV)
+ *   spec=ux-research,motion,…                   specializations (CSV)
  *   sort=newest|salary|company                  sort mode (default "top")
  *   view=saved                                 saved-only view
  *   status=interested|applied|rejected         status filter
@@ -99,6 +106,11 @@ const EXPERIENCE_VALUES: ExperienceLevel[] = [
   "senior",
 ];
 
+/** Specialization keys, in the canonical display order from lib/jobs. */
+const SPECIALIZATION_VALUES: Specialization[] = SPECIALIZATIONS.map(
+  (s) => s.key
+);
+
 export interface FilterState {
   discipline: DisciplineFilter;
   search: string;
@@ -115,6 +127,8 @@ export interface FilterState {
   datePosted: DateFilter;
   /** Selected experience levels (multi-select facet; empty = any). */
   experience: Set<ExperienceLevel>;
+  /** Selected specializations (multi-select facet; empty = any). */
+  specializations: Set<Specialization>;
 }
 
 function parseInitial(params: URLSearchParams): FilterState {
@@ -180,6 +194,18 @@ function parseInitial(params: URLSearchParams): FilterState {
       : []
   );
 
+  const specRaw = params.get("spec");
+  const specializations = new Set<Specialization>(
+    specRaw
+      ? (specRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) =>
+            (SPECIALIZATION_VALUES as string[]).includes(s)
+          ) as Specialization[])
+      : []
+  );
+
   return {
     discipline,
     search: params.get("q") ?? "",
@@ -194,6 +220,7 @@ function parseInitial(params: URLSearchParams): FilterState {
     sort,
     datePosted,
     experience,
+    specializations,
   };
 }
 
@@ -223,6 +250,13 @@ function toQueryString(s: FilterState, job: string | null): string {
       EXPERIENCE_VALUES.filter((e) => s.experience.has(e)).join(",")
     );
   }
+  if (s.specializations.size > 0) {
+    // Stable, deterministic order so the same view → the same URL.
+    p.set(
+      "spec",
+      SPECIALIZATION_VALUES.filter((k) => s.specializations.has(k)).join(",")
+    );
+  }
   if (s.savedOnly) p.set("view", "saved");
   if (s.status !== "all") p.set("status", s.status);
   if (s.sort !== "top") p.set("sort", s.sort);
@@ -246,6 +280,8 @@ export interface FilterApi extends FilterState {
   setDatePosted: (d: DateFilter) => void;
   toggleExperience: (level: ExperienceLevel) => void;
   clearExperience: () => void;
+  toggleSpecialization: (key: Specialization) => void;
+  clearSpecializations: () => void;
   reset: () => void;
   /** The job id whose modal is open (from `?job=`), or null. */
   selectedJobId: string | null;
@@ -271,6 +307,7 @@ const DEFAULT: FilterState = {
   sort: "top",
   datePosted: "any",
   experience: new Set(),
+  specializations: new Set(),
 };
 
 export function useFilterState(): FilterApi {
@@ -381,13 +418,32 @@ export function useFilterState(): FilterApi {
     () => setState((s) => ({ ...s, experience: new Set() })),
     []
   );
+  const toggleSpecialization = useCallback(
+    (key: Specialization) =>
+      setState((s) => {
+        const specializations = new Set(s.specializations);
+        if (specializations.has(key)) specializations.delete(key);
+        else specializations.add(key);
+        return { ...s, specializations };
+      }),
+    []
+  );
+  const clearSpecializations = useCallback(
+    () => setState((s) => ({ ...s, specializations: new Set() })),
+    []
+  );
   const setSelectedJobId = useCallback(
     (id: string | null) => setSelectedJobIdState(id),
     []
   );
   const reset = useCallback(
     () =>
-      setState({ ...DEFAULT, sources: new Set(), experience: new Set() }),
+      setState({
+        ...DEFAULT,
+        sources: new Set(),
+        experience: new Set(),
+        specializations: new Set(),
+      }),
     []
   );
 
@@ -403,7 +459,8 @@ export function useFilterState(): FilterApi {
     state.savedOnly ||
     state.status !== "all" ||
     state.datePosted !== "any" ||
-    state.experience.size > 0;
+    state.experience.size > 0 ||
+    state.specializations.size > 0;
 
   return {
     ...state,
@@ -422,6 +479,8 @@ export function useFilterState(): FilterApi {
     setDatePosted,
     toggleExperience,
     clearExperience,
+    toggleSpecialization,
+    clearSpecializations,
     reset,
     selectedJobId,
     setSelectedJobId,

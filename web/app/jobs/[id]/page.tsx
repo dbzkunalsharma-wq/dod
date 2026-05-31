@@ -2,6 +2,7 @@ import clsx from "clsx";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { SpecializationTag } from "@/components/board-controls";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { DisciplineBadge } from "@/components/DisciplineBadge";
 import { ArrowUpRightIcon, PinIcon } from "@/components/icons";
@@ -13,6 +14,7 @@ import {
   jobSlug,
   postedAgo,
   sourceLabel,
+  specialization,
   topCompanyName,
 } from "@/lib/jobs";
 import { getJobBySlug, loadAllJobs } from "@/lib/jobs-data";
@@ -122,6 +124,7 @@ export default async function JobPage({
   const salary = job.salary?.trim();
   const description = job.description?.trim();
   const exp = experienceLevel(job);
+  const spec = specialization(job);
   const meta = DISCIPLINE_MAP[job.discipline];
 
   return (
@@ -164,6 +167,7 @@ export default async function JobPage({
                 <span className="inline-flex items-center rounded-full border border-[var(--silver-line)] bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-white/65">
                   {EXPERIENCE_LABELS[exp]}
                 </span>
+                <SpecializationTag specialization={spec} className="px-2.5 py-1 text-xs" />
               </div>
               <h1 className="mt-2 text-balance text-2xl font-semibold leading-snug tracking-tight text-white sm:text-3xl">
                 {job.title}

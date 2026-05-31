@@ -4,12 +4,19 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 import { companySlug } from "@/lib/companies";
-import { DISCIPLINE_MAP, isNew, jobSlug, postedAgo, sourceLabel } from "@/lib/jobs";
+import {
+  DISCIPLINE_MAP,
+  isNew,
+  jobSlug,
+  postedAgo,
+  sourceLabel,
+  specialization,
+} from "@/lib/jobs";
 import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
 import { useTracker } from "@/lib/useTracker";
 import { ApplyAssist } from "./ApplyAssist";
-import { CopyJobLinkButton } from "./board-controls";
+import { CopyJobLinkButton, SpecializationTag } from "./board-controls";
 import { CompanyAvatar } from "./CompanyAvatar";
 import { DisciplineBadge } from "./DisciplineBadge";
 import { ArrowUpRightIcon, CloseIcon, PinIcon } from "./icons";
@@ -107,6 +114,7 @@ export function JobDetailModal({
 
   const meta = DISCIPLINE_MAP[job.discipline];
   const description = job.description?.trim();
+  const spec = specialization(job);
 
   return (
     <div
@@ -169,8 +177,9 @@ export function JobDetailModal({
               size="lg"
             />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <DisciplineBadge discipline={job.discipline} />
+                <SpecializationTag specialization={spec} className="px-2.5 py-1 text-xs" />
                 {now !== null && isNew(job, now) && <NewBadge />}
               </div>
               <h2

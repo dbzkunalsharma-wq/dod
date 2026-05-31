@@ -849,6 +849,160 @@ export function experienceLevel(job: Job): ExperienceLevel {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Specialization facet — the role-type DEPTH within a discipline      */
+/*  (UX Research, Motion, Service Design, Brand, Industrial, …).        */
+/*  Deterministic, title-first then description, ordered specific →     */
+/*  general, with a discipline-keyed "Generalist" fallback so it's      */
+/*  never empty. No backend, no ML. Derived purely from title/desc so   */
+/*  it survives the feed growing + broadening (no feed schema change).  */
+/* ------------------------------------------------------------------ */
+
+export type Specialization =
+  | "ux-research"
+  | "interaction"
+  | "design-systems"
+  | "service"
+  | "content"
+  | "product"
+  | "ui-visual"
+  | "web"
+  | "graphic"
+  | "brand"
+  | "motion"
+  | "illustration"
+  | "packaging"
+  | "industrial"
+  | "spatial"
+  | "leadership"
+  | "design-ops"
+  | "generalist";
+
+export interface SpecializationMeta {
+  key: Specialization;
+  label: string;
+}
+
+/**
+ * Ordered specific → general. This array order is ALSO the priority order used
+ * by `specialization()` (the FIRST matching rule wins), and the display order
+ * for the filter UI. "Generalist" sits last as the catch-all.
+ */
+export const SPECIALIZATIONS: SpecializationMeta[] = [
+  { key: "ux-research", label: "UX Research" },
+  { key: "interaction", label: "Interaction" },
+  { key: "design-systems", label: "Design Systems" },
+  { key: "service", label: "Service Design" },
+  { key: "content", label: "Content / UX Writing" },
+  { key: "product", label: "Product Design" },
+  { key: "ui-visual", label: "UI / Visual" },
+  { key: "web", label: "Web" },
+  { key: "graphic", label: "Graphic" },
+  { key: "brand", label: "Brand / Identity" },
+  { key: "motion", label: "Motion / Animation" },
+  { key: "illustration", label: "Illustration" },
+  { key: "packaging", label: "Packaging" },
+  { key: "industrial", label: "Industrial" },
+  { key: "spatial", label: "Spatial / Exhibition" },
+  { key: "leadership", label: "Design Leadership" },
+  { key: "design-ops", label: "Design Ops" },
+  { key: "generalist", label: "Generalist" },
+];
+
+export const SPECIALIZATION_LABELS: Record<Specialization, string> =
+  Object.fromEntries(
+    SPECIALIZATIONS.map((s) => [s.key, s.label])
+  ) as Record<Specialization, string>;
+
+/**
+ * Ordered match rules (specific → general). Each is a RegExp tested against the
+ * title first, then the description. The first rule that matches (in this order)
+ * decides the specialization, so e.g. "Senior UX Researcher" → UX Research even
+ * though "Senior" would also hit Design Leadership lower down. "Generalist" is a
+ * synthetic fallback (no regex) keyed off the discipline below.
+ *
+ * Word boundaries (\b) keep matches honest: "ui" won't fire inside "build",
+ * "cmf" won't fire inside other words, etc.
+ */
+const SPECIALIZATION_RULES: { key: Exclude<Specialization, "generalist">; re: RegExp }[] =
+  [
+    {
+      key: "ux-research",
+      re: /\b(ux\s*research(?:er)?|user\s*research(?:er)?|design\s*research(?:er)?|ux\s*researcher)\b/i,
+    },
+    { key: "interaction", re: /\binteraction\s*design(?:er)?\b/i },
+    { key: "design-systems", re: /\bdesign\s*systems?\b/i },
+    { key: "service", re: /\bservice\s*design(?:er)?\b/i },
+    {
+      key: "content",
+      re: /\b(ux\s*writ(?:er|ing)|content\s*design(?:er)?|conversation(?:al)?\s*design(?:er)?)\b/i,
+    },
+    { key: "product", re: /\bproduct\s*design(?:er)?\b/i },
+    {
+      key: "ui-visual",
+      re: /\b(ui\s*designer|ui\s*\/\s*ux|ui\/ux|ux\s*\/\s*ui|visual\s*design(?:er)?)\b/i,
+    },
+    { key: "web", re: /\bweb\s*design(?:er)?\b/i },
+    { key: "graphic", re: /\bgraphic\s*design(?:er)?\b/i },
+    { key: "brand", re: /\b(brand(?:ing)?|identity)\b/i },
+    { key: "motion", re: /\b(motion|animation|animator)\b/i },
+    { key: "illustration", re: /\b(illustrat(?:or|ion))\b/i },
+    { key: "packaging", re: /\bpackaging\b/i },
+    {
+      key: "industrial",
+      re: /\b(industrial|cmf|footwear|furniture|automotive|transportation|mobility)\b/i,
+    },
+    { key: "spatial", re: /\b(spatial|exhibition|experiential)\b/i },
+    {
+      key: "leadership",
+      re: /\b(head\s*of\s*design|design\s*(?:lead|manager|director)|creative\s*director|art\s*director|principal\s*designer|staff\s*designer)\b/i,
+    },
+    { key: "design-ops", re: /\bdesign\s*(?:ops|operations)\b/i },
+  ];
+
+/** Discipline → its "Generalist" reading (used only for the empty-match fallback). */
+function generalistFor(_discipline: Discipline): Specialization {
+  // Every discipline currently folds into one shared "Generalist" bucket. Kept
+  // as a function (keyed off discipline) so the fallback is principled and easy
+  // to split later if a per-discipline generalist label is ever wanted.
+  return "generalist";
+}
+
+/**
+ * The role-type specialization of a job (deterministic, title-first then
+ * description). Walks `SPECIALIZATION_RULES` in order (specific → general) and
+ * returns the first match; if nothing matches, falls back to a discipline-keyed
+ * "Generalist" so the value is never empty.
+ *
+ * Title is weighted over description by testing ALL rules against the title
+ * first, only then re-walking them against the description — so a title that
+ * says "Visual Designer" wins over a description that merely mentions "research".
+ *
+ * Quick sanity (informal — no test runner needed):
+ *   "Senior UX Researcher"            → "ux-research"
+ *   "UI/UX Designer"                  → "ui-visual"
+ *   "Product Designer"                → "product"
+ *   "Motion Graphics Designer"        → "motion"
+ *   "Design Systems Lead"             → "design-systems" (beats leadership)
+ *   "Head of Design"                  → "leadership"
+ *   "Graphic Designer (Packaging)"    → "packaging"     (packaging > graphic)
+ *   "CMF Designer"                    → "industrial"
+ *   "Designer" (uiux)                 → "generalist"
+ */
+export function specialization(job: Job): Specialization {
+  const title = job.title ?? "";
+  for (const { key, re } of SPECIALIZATION_RULES) {
+    if (re.test(title)) return key;
+  }
+  const desc = job.description ?? "";
+  if (desc) {
+    for (const { key, re } of SPECIALIZATION_RULES) {
+      if (re.test(desc)) return key;
+    }
+  }
+  return generalistFor(job.discipline);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Location facet — collapse messy location strings into clean cities */
 /*  Deterministic substring matching (no backend, no ML). The feed's   */
 /*  `location` is free-text ("Sector 37 Gurgaon, Delhi-NCR, India",    */

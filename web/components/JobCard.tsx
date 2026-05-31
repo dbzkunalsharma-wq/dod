@@ -10,11 +10,13 @@ import {
   jobSlug,
   postedAgo,
   sourceLabel,
+  specialization,
   topCompanyName,
 } from "@/lib/jobs";
 import type { Job } from "@/lib/types";
 import { useNow } from "@/lib/useRelativeTime";
 import { useTracker } from "@/lib/useTracker";
+import { SpecializationTag } from "./board-controls";
 import { CompanyAvatar } from "./CompanyAvatar";
 import { DisciplineBadge } from "./DisciplineBadge";
 import { ArrowUpRightIcon, MailIcon, PinIcon } from "./icons";
@@ -39,6 +41,7 @@ export function JobCard({
   const meta = DISCIPLINE_MAP[job.discipline];
   const cHref = job.contact ? contactHref(job.contact) : null;
   const topName = topCompanyName(job.company);
+  const spec = specialization(job);
 
   const { isSaved, statusOf, toggleSave, setStatus } = useTracker();
   const saved = isSaved(job.id);
@@ -113,6 +116,14 @@ export function JobCard({
       <h2 className="mt-3 text-balance text-lg font-semibold leading-snug tracking-tight text-white">
         {job.title}
       </h2>
+
+      {/* role-type specialization — a subtle tag under the title (hidden for
+          the "Generalist" catch-all so untyped roles stay uncluttered) */}
+      {spec !== "generalist" && (
+        <div className="mt-1.5">
+          <SpecializationTag specialization={spec} />
+        </div>
+      )}
 
       {job.company &&
         (() => {

@@ -18,8 +18,14 @@ log = logging.getLogger("dod")
 _BASE = "https://unstop.com/api/public/opportunity/search-result"
 _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
-_QUERIES = ["designer", "ux", "graphic design", "product design"]
-_PAGES = 2
+# Each page returns a fresh result set (verified: pages 1-4 fully non-overlapping), so
+# more keywords + pages is net-new coverage; the classifier still filters per result.
+_QUERIES = [
+    "designer", "ux", "graphic design", "product design",
+    "ux researcher", "motion designer", "branding", "illustrator",
+    "art director", "creative", "ui developer", "design intern",
+]
+_PAGES = 3
 
 
 def _strip(html_text) -> str:

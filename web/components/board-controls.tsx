@@ -5,11 +5,13 @@ import {
   EXPERIENCE_LABELS,
   EXPERIENCE_LEVELS,
   LOCATION_LABELS,
+  SPECIALIZATION_LABELS,
+  SPECIALIZATIONS,
   WORK_MODES,
   LOCATIONS,
   sourceLabel,
 } from "@/lib/jobs";
-import type { ExperienceLevel } from "@/lib/jobs";
+import type { ExperienceLevel, Specialization } from "@/lib/jobs";
 import type {
   DateFilter,
   DisciplineFilter,
@@ -303,6 +305,120 @@ export function ExperienceFilter({
         );
       })}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Specialization chips — the role-type DEPTH within a discipline      */
+/*  (UX Research, Motion, Service Design, …). A multi-select row,       */
+/*  faceted like sources/experience: empty selection = any. Counts per  */
+/*  specialization ignore THIS facet's own selection but respect every  */
+/*  other filter; zero-count specializations are hidden from the row.   */
+/* ------------------------------------------------------------------ */
+
+export function SpecializationFilter({
+  selected,
+  counts,
+  onToggle,
+  onClear,
+}: {
+  selected: Set<Specialization>;
+  /** Live per-specialization counts (own selection ignored). */
+  counts: Record<string, number>;
+  onToggle: (key: Specialization) => void;
+  onClear: () => void;
+}) {
+  const anyActive = selected.size === 0;
+  // Show a specialization chip only when it's reachable in the current view
+  // (count > 0) OR already selected (so an active chip never vanishes).
+  const visible = SPECIALIZATIONS.filter(
+    (s) => (counts[s.key] ?? 0) > 0 || selected.has(s.key)
+  );
+
+  // Nothing to specialise on (e.g. an empty filtered view) — hide the whole row.
+  if (visible.length === 0) return null;
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1.5"
+      role="group"
+      aria-label="Filter by specialization"
+    >
+      <span className="mr-0.5 text-xs font-medium uppercase tracking-wide text-white/40">
+        Specialization
+      </span>
+
+      <button
+        type="button"
+        onClick={onClear}
+        aria-pressed={anyActive}
+        className={clsx(
+          "rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-md transition-colors duration-200",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+          anyActive
+            ? "border-[var(--silver-bright)] bg-white/15 text-white"
+            : "border-[var(--silver-line)] bg-white/[0.04] text-white/55 hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+        )}
+      >
+        Any
+      </button>
+
+      {visible.map((s) => {
+        const active = selected.has(s.key);
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onToggle(s.key)}
+            aria-pressed={active}
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-md transition-colors duration-200",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+              active
+                ? "border-violet-300/40 bg-violet-400/20 text-white shadow-[0_4px_20px_-6px_rgba(139,92,246,0.5)]"
+                : "border-[var(--silver-line)] bg-white/[0.04] text-white/55 hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+            )}
+          >
+            {s.label}
+            <span
+              className={clsx(
+                "tabular-nums",
+                active ? "text-white/70" : "text-white/35"
+              )}
+            >
+              {counts[s.key] ?? 0}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Specialization tag — a small, subtle neutral pill for cards/pages.  */
+/*  Intentionally low-key (silver glass, no hue) so it reads as a       */
+/*  secondary detail beside the colored discipline badge. Hidden for    */
+/*  the "Generalist" catch-all so we don't add noise to untyped roles.  */
+/* ------------------------------------------------------------------ */
+
+export function SpecializationTag({
+  specialization,
+  className,
+}: {
+  specialization: Specialization;
+  className?: string;
+}) {
+  if (specialization === "generalist") return null;
+  return (
+    <span
+      className={clsx(
+        "inline-flex items-center rounded-full border border-[var(--silver-line)] bg-white/[0.05] px-2 py-0.5 text-[11px] font-medium text-white/55",
+        className
+      )}
+    >
+      {SPECIALIZATION_LABELS[specialization]}
+    </span>
   );
 }
 
@@ -629,6 +745,7 @@ export function ActiveFilters({
   status,
   datePosted,
   experience,
+  specializations,
   onClearDiscipline,
   onClearSearch,
   onRemoveSource,
@@ -641,6 +758,7 @@ export function ActiveFilters({
   onClearStatus,
   onClearDatePosted,
   onRemoveExperience,
+  onRemoveSpecialization,
   onClearAll,
 }: {
   discipline: DisciplineFilter;
@@ -655,6 +773,7 @@ export function ActiveFilters({
   status: StatusFilter;
   datePosted: DateFilter;
   experience: Set<ExperienceLevel>;
+  specializations: Set<Specialization>;
   onClearDiscipline: () => void;
   onClearSearch: () => void;
   onRemoveSource: (s: Source) => void;
@@ -667,6 +786,7 @@ export function ActiveFilters({
   onClearStatus: () => void;
   onClearDatePosted: () => void;
   onRemoveExperience: (level: ExperienceLevel) => void;
+  onRemoveSpecialization: (key: Specialization) => void;
   onClearAll: () => void;
 }) {
   const chips: ActiveChip[] = [];
@@ -728,6 +848,14 @@ export function ActiveFilters({
       key: `exp-${level}`,
       label: EXPERIENCE_LABELS[level],
       onRemove: () => onRemoveExperience(level),
+    });
+  for (const key of SPECIALIZATIONS.map((s) => s.key).filter((k) =>
+    specializations.has(k)
+  ))
+    chips.push({
+      key: `spec-${key}`,
+      label: SPECIALIZATION_LABELS[key],
+      onRemove: () => onRemoveSpecialization(key),
     });
   if (savedOnly)
     chips.push({ key: "saved", label: "Saved", onRemove: onClearSaved });

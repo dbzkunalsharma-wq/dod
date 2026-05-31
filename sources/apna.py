@@ -47,7 +47,7 @@ _CATEGORIES = {
     1015: "fashion_designer",
     1013: "photography_video_editing",
 }
-_PAGES = 3  # ~75 results per category, newest first
+_PAGES = 4  # up to ~100 results per category, newest first; the totalPages guard stops early
 
 # Pulls the embedded Next.js data blob out of the SSR HTML.
 _NEXT_RE = re.compile(

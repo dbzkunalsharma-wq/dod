@@ -24,6 +24,10 @@ _UA = {
 }
 
 # Design-discipline queries; the classifier still makes the final call per result.
+# The FULL set is run against the India-wide location; a CORE subset (the highest-volume
+# design titles) is additionally run per-city, because LinkedIn caps the result set per
+# (keyword, location) query — so slicing by city surfaces far more unique roles than a
+# single "India" pass ever can.
 _QUERIES = [
     "UI UX Designer", "Product Designer", "Graphic Designer", "Visual Designer",
     "Motion Designer", "Interaction Designer", "UX Researcher",
@@ -31,9 +35,28 @@ _QUERIES = [
     "Design Lead", "Design Manager", "Service Designer", "UX Writer",
     "Packaging Designer", "Web Designer",
 ]
+_CORE_QUERIES = [
+    "UI UX Designer", "Product Designer", "Graphic Designer", "Visual Designer",
+    "Motion Designer", "UX Researcher", "Brand Designer",
+]
+
+# The India-wide pass (kept) plus the major design-hiring metros. LinkedIn resolves a
+# plain city name in `location`, so the human label doubles as the query value;
+# "Remote, India" catches the remote-open-to-India roles.
 _LOCATION = "India"
-_STARTS = (0, 10, 20)  # three pages (~30 results) per query; bounds LinkedIn 429s
+_CITIES = [
+    "Bengaluru, India", "Mumbai, India", "Delhi, India", "Gurgaon, India",
+    "Noida, India", "Hyderabad, India", "Pune, India", "Chennai, India",
+    "Kolkata, India", "Ahmedabad, India", "Remote, India",
+]
+
+# Pagination, per pass. LinkedIn's guest endpoint serves ~25 cards per call and `start`
+# is a row offset; two pages for the broad India pass, one page per (city, keyword) to
+# keep the total request count bounded.
+_WIDE_STARTS = (0, 25)   # India-wide: 16 keywords x 2 pages = 32 requests
+_CITY_STARTS = (0,)      # per-city:   11 cities x 7 core keywords x 1 page = 77 requests
 _DELAY = 1.2             # seconds between requests, to stay polite / avoid throttling
+# -> ~109 guest requests total (bounded; well under the ~120-160 ceiling).
 
 
 def _to_job(card) -> dict | None:
@@ -90,33 +113,62 @@ def _to_job(card) -> dict | None:
     }
 
 
+def _run_query(query: str, location: str, starts, jobs: list[dict], seen: set[str]) -> None:
+    """Run one (keyword, location) sweep across `starts`, appending unseen jobs in place.
+
+    Mirrors the original per-query loop: a non-200 (e.g. a 429 mid-run) or an empty page
+    breaks THIS query only, so the other queries still land. Never raises."""
+    for start in starts:
+        try:
+            resp = httpx.get(
+                _BASE,
+                params={"keywords": query, "location": location, "start": start},
+                headers=_UA,
+                timeout=20,
+            )
+            if resp.status_code != 200:
+                log.warning("linkedin: '%s' @ '%s' start=%s -> HTTP %s",
+                            query, location, start, resp.status_code)
+                break
+            cards = BeautifulSoup(resp.text, "html.parser").select("div.base-card")
+            if not cards:
+                break
+            for card in cards:
+                job = _to_job(card)
+                if job and job["id"] not in seen:
+                    seen.add(job["id"])
+                    jobs.append(job)
+        except Exception as e:  # noqa: BLE001 - one bad query must not kill the rest
+            log.warning("linkedin: '%s' @ '%s' start=%s failed (%s)", query, location, start, e)
+            break
+        time.sleep(_DELAY)
+
+
 def fetch() -> list[dict]:
-    """Query each design discipline for India roles via the guest endpoint. Never raises."""
+    """Query each design discipline for India roles via the guest endpoint, across both
+    the India-wide location and the major metros (per-city surfaces far more unique roles
+    than the capped India-wide query alone). Dedup by job id. Never raises."""
     jobs: list[dict] = []
     seen: set[str] = set()
+
+    # (1) Broad India-wide pass: every keyword, two pages.
     for query in _QUERIES:
-        for start in _STARTS:
-            try:
-                resp = httpx.get(
-                    _BASE,
-                    params={"keywords": query, "location": _LOCATION, "start": start},
-                    headers=_UA,
-                    timeout=20,
-                )
-                if resp.status_code != 200:
-                    log.warning("linkedin: '%s' start=%s -> HTTP %s", query, start, resp.status_code)
-                    break
-                cards = BeautifulSoup(resp.text, "html.parser").select("div.base-card")
-                if not cards:
-                    break
-                for card in cards:
-                    job = _to_job(card)
-                    if job and job["id"] not in seen:
-                        seen.add(job["id"])
-                        jobs.append(job)
-            except Exception as e:  # noqa: BLE001 - one bad query must not kill the rest
-                log.warning("linkedin: '%s' start=%s failed (%s)", query, start, e)
-                break
-            time.sleep(_DELAY)
-    log.info("linkedin: %d unique India design postings", len(jobs))
+        _run_query(query, _LOCATION, _WIDE_STARTS, jobs, seen)
+
+    # (2) Per-city deepening: the core (highest-volume) keywords against each metro.
+    for city in _CITIES:
+        for query in _CORE_QUERIES:
+            _run_query(query, city, _CITY_STARTS, jobs, seen)
+
+    log.info("linkedin: %d unique India design postings (India-wide + %d cities)",
+             len(jobs), len(_CITIES))
     return jobs
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    results = fetch()
+    print(f"\nfetched {len(results)} jobs")
+    for j in results[:5]:
+        line = f"{j['source']} | {j.get('location') or '-'} | {j['title']}"
+        print(line.encode("ascii", "replace").decode("ascii"))

@@ -28,13 +28,23 @@ _UA = {
 # Each keyword is a Shine search-slug. Keyword genuinely changes the result set
 # (verified: ~6/20 overlap between slugs), so all four add coverage. The
 # classifier still makes the final discipline call per result.
+# Each slug genuinely changes the result set; verified that these extra slugs all return
+# a populated __NEXT_DATA__ blob (~20 results each). The classifier makes the final call.
 _KEYWORDS = [
     "ui-ux-designer",
     "graphic-designer",
     "product-designer",
     "visual-designer",
+    "motion-graphics-designer",
+    "ux-researcher",
+    "interaction-designer",
+    "web-designer",
+    "illustrator",
+    "art-director",
+    "brand-designer",
+    "design-intern",
 ]
-_PAGES = 2  # pages per keyword (~20 results each)
+_PAGES = 3  # pages per keyword (~20 results each; out-of-range pages re-serve seen ids -> break)
 
 
 def _strip(html_text) -> str:

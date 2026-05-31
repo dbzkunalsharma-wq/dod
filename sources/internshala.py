@@ -29,12 +29,18 @@ _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.
 # ("internships" vs "jobs") -- both render identical `.individual_internship` cards.
 _CATEGORIES = [
     ("design-internship", "internships"),
+    ("graphic-design-internship", "internships"),
+    ("ui-ux-design-internship", "internships"),
     ("ui-ux-design-jobs", "jobs"),
     ("graphic-design-jobs", "jobs"),
+    ("visual-design-jobs", "jobs"),
+    ("motion-graphics-jobs", "jobs"),
+    ("design-jobs", "jobs"),
+    ("art-jobs", "jobs"),
     ("product-management-jobs", "jobs"),
     ("user-experience-ux-designer-jobs", "jobs"),
 ]
-_PAGES = 2
+_PAGES = 3  # each category serves up to ~3 non-overlapping pages; the empty-page break stops early
 
 
 def _strip(html_text) -> str:
