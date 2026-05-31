@@ -36,11 +36,14 @@ jobs:
       - name: Export feed (web/public/jobs.json)
         run: python export.py
 
+      - name: Build outreach ledger (web/public/companies-ledger.json)
+        run: python ledger.py
+
       - name: Commit refreshed feed
         run: |
           git config user.name "dod-bot"
           git config user.email "dod-bot@users.noreply.github.com"
-          git add web/public/jobs.json web/public/stats-history.json
+          git add web/public/jobs.json web/public/stats-history.json web/public/companies-ledger.json
           git commit -m "chore: daily job-feed refresh" || echo "no changes to commit"
           git push || echo "nothing to push"
 

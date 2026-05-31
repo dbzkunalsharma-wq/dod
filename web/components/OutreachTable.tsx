@@ -2,10 +2,15 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
-import { DISCIPLINE_MAP } from "@/lib/jobs";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DISCIPLINES, DISCIPLINE_MAP } from "@/lib/jobs";
 import type { CompanyOutreach } from "@/lib/outreach";
-import { emailTemplate, inmailTemplate } from "@/lib/outreach-templates";
+import {
+  emailTemplate,
+  followUpTemplate,
+  inmailTemplate,
+} from "@/lib/outreach-templates";
+import type { Discipline } from "@/lib/types";
 import {
   OUTREACH_STATUS_LABELS,
   OUTREACH_STATUS_ORDER,
@@ -26,6 +31,11 @@ import { TopBadge } from "./tracker-ui";
 
 type SortMode = "score" | "fresh" | "roles" | "name";
 type StatusFilter = "all" | Exclude<OutreachStatus, "none">;
+/** Lifecycle facet from the ledger (orthogonal to the manual status tracker). */
+type LifecycleFilter = "all" | "hiring" | "new" | "dormant";
+
+/** How many rows to render before "Load more" (the ledger grows to thousands). */
+const PAGE_SIZE = 150;
 
 /* ------------------------------------------------------------------ */
 /*  Status palette (subtle colored chips on the dark glass surface)    */
@@ -251,15 +261,32 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortMode>("score");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [freshOnly, setFreshOnly] = useState(false);
+  const [lifecycle, setLifecycle] = useState<LifecycleFilter>("all");
+  const [discipline, setDiscipline] = useState<Discipline | "all">("all");
+  const [city, setCity] = useState<string>("all");
+  const [visible, setVisible] = useState(PAGE_SIZE);
   const { statusOf, setStatus, countOf } = useOutreach();
 
-  // How many companies have a role posted in the last 7 days (real posting
-  // dates) — drives the "Posted this week" toggle's live count.
-  const freshCount = useMemo(
-    () => companies.filter((c) => c.postedThisWeek).length,
+  // Lifecycle counts (from the ledger fields) for the filter pills + header.
+  const lifecycleCounts = useMemo(
+    () => ({
+      all: companies.length,
+      hiring: companies.filter((c) => c.currentlyHiring).length,
+      new: companies.filter((c) => c.isNewCompany).length,
+      dormant: companies.filter((c) => c.dormant).length,
+    }),
     [companies]
   );
+
+  // Distinct concrete city labels present, for the city dropdown (skip the
+  // "—" / "Multiple" buckets, which aren't useful filter targets).
+  const cityOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of companies) {
+      if (c.city && c.city !== "—" && c.city !== "Multiple") set.add(c.city);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "en"));
+  }, [companies]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -274,12 +301,20 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
       });
     }
 
-    if (statusFilter !== "all") {
-      list = list.filter((c) => statusOf(c.slug) === statusFilter);
+    if (lifecycle === "hiring") list = list.filter((c) => c.currentlyHiring);
+    else if (lifecycle === "new") list = list.filter((c) => c.isNewCompany);
+    else if (lifecycle === "dormant") list = list.filter((c) => c.dormant);
+
+    if (discipline !== "all") {
+      list = list.filter((c) => c.disciplines.includes(discipline));
     }
 
-    if (freshOnly) {
-      list = list.filter((c) => c.postedThisWeek);
+    if (city !== "all") {
+      list = list.filter((c) => c.city === city);
+    }
+
+    if (statusFilter !== "all") {
+      list = list.filter((c) => statusOf(c.slug) === statusFilter);
     }
 
     const sorted = [...list];
@@ -295,30 +330,55 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
           a.name.localeCompare(b.name, "en", { sensitivity: "base" })
       );
     } else if (sort === "fresh") {
-      // "Freshest" — posted-this-week first, then most fresh roles, then score.
+      // "Freshest" — fresh-this-week first, then most open roles, then score.
       sorted.sort(
         (a, b) =>
-          Number(b.postedThisWeek) - Number(a.postedThisWeek) ||
+          Number(b.freshThisWeek) - Number(a.freshThisWeek) ||
           b.freshRoleCount - a.freshRoleCount ||
           b.score - a.score ||
           a.name.localeCompare(b.name, "en", { sensitivity: "base" })
       );
     } else {
-      // "score" — the server order, re-applied defensively.
+      // "score" — the server order (hiring-first, then score), re-applied.
       sorted.sort(
         (a, b) =>
+          Number(b.currentlyHiring) - Number(a.currentlyHiring) ||
           b.score - a.score ||
-          b.openRoles - a.openRoles ||
           a.name.localeCompare(b.name, "en", { sensitivity: "base" })
       );
     }
     return sorted;
-  }, [companies, query, sort, statusFilter, freshOnly, statusOf]);
+  }, [
+    companies,
+    query,
+    sort,
+    statusFilter,
+    lifecycle,
+    discipline,
+    city,
+    statusOf,
+  ]);
+
+  // Reset the visible window whenever the filter result set changes, so
+  // "Load more" always starts from the top of the new list.
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [query, sort, statusFilter, lifecycle, discipline, city]);
+
+  const shown = filtered.slice(0, visible);
+  const hasMore = filtered.length > shown.length;
 
   const statusCounts = OUTREACH_STATUS_ORDER.map((s) => ({
     status: s,
     count: countOf(s),
   }));
+
+  const lifecyclePills: Array<{ key: LifecycleFilter; label: string; dot?: string }> = [
+    { key: "all", label: "All" },
+    { key: "hiring", label: "Hiring now", dot: "bg-emerald-400" },
+    { key: "new", label: "New this week", dot: "bg-sky-400" },
+    { key: "dormant", label: "Dormant", dot: "bg-white/35" },
+  ];
 
   return (
     <>
@@ -327,8 +387,20 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
         <ActionsBar rows={companies} />
       </div>
 
+      {/* header line — total · hiring now · grows daily */}
+      <p className="mt-5 text-sm text-white/55">
+        <span className="font-medium text-white/80">
+          {companies.length.toLocaleString("en-IN")}
+        </span>{" "}
+        companies ·{" "}
+        <span className="font-medium text-emerald-300/90">
+          {lifecycleCounts.hiring.toLocaleString("en-IN")} hiring now
+        </span>{" "}
+        · grows daily
+      </p>
+
       {/* search + sort island */}
-      <div className="dod-glass dod-glass--silver mt-4 rounded-2xl p-3 sm:p-4">
+      <div className="dod-glass dod-glass--silver mt-3 rounded-2xl p-3 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <span
@@ -351,67 +423,78 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
               )}
             />
           </div>
-          <div className="relative inline-flex shrink-0 items-center">
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortMode)}
-              aria-label="Sort companies"
-              className={clsx(
-                "appearance-none rounded-full border border-[var(--silver-line)] bg-white/[0.06] py-2.5 pl-4 pr-9 text-sm font-medium text-white",
-                "backdrop-blur-md transition-colors duration-200 hover:border-white/25 hover:bg-white/[0.1]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                "[&>option]:bg-[#0f111a] [&>option]:text-white"
-              )}
+          <SelectPill
+            value={discipline}
+            onChange={(v) => setDiscipline(v as Discipline | "all")}
+            ariaLabel="Filter by discipline"
+          >
+            <option value="all">All disciplines</option>
+            {DISCIPLINES.map((d) => (
+              <option key={d.key} value={d.key}>
+                {d.label}
+              </option>
+            ))}
+          </SelectPill>
+          {cityOptions.length > 0 && (
+            <SelectPill
+              value={city}
+              onChange={setCity}
+              ariaLabel="Filter by city"
             >
-              <option value="score">Hiring-intent score</option>
-              <option value="fresh">Freshest</option>
-              <option value="roles">Most roles</option>
-              <option value="name">Name A–Z</option>
-            </select>
-            <ChevronDownIcon
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3.5 h-3.5 w-3.5 text-white/45"
-            />
-          </div>
+              <option value="all">All cities</option>
+              {cityOptions.map((cityName) => (
+                <option key={cityName} value={cityName}>
+                  {cityName}
+                </option>
+              ))}
+            </SelectPill>
+          )}
+          <SelectPill
+            value={sort}
+            onChange={(v) => setSort(v as SortMode)}
+            ariaLabel="Sort companies"
+          >
+            <option value="score">Hiring-intent score</option>
+            <option value="fresh">Freshest</option>
+            <option value="roles">Most roles</option>
+            <option value="name">Name A–Z</option>
+          </SelectPill>
         </div>
 
-        {/* status filter + counts */}
+        {/* lifecycle filter (from the ledger) */}
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <FilterPill
-            active={statusFilter === "all"}
-            onClick={() => setStatusFilter("all")}
-          >
-            All
-            <span className="tabular-nums text-white/45">
-              ({companies.length})
-            </span>
-          </FilterPill>
+          {lifecyclePills.map(({ key, label, dot }) => (
+            <FilterPill
+              key={key}
+              active={lifecycle === key}
+              dot={dot}
+              onClick={() => setLifecycle(key)}
+            >
+              {label}
+              <span className="tabular-nums text-white/45">
+                ({lifecycleCounts[key].toLocaleString("en-IN")})
+              </span>
+            </FilterPill>
+          ))}
+
+          {/* manual pipeline status — orthogonal, so set apart by a divider */}
+          <span
+            aria-hidden="true"
+            className="mx-0.5 h-4 w-px self-center bg-[var(--silver-line)]"
+          />
           {statusCounts.map(({ status, count }) => (
             <FilterPill
               key={status}
               active={statusFilter === status}
               dot={STATUS_VISUALS[status].dot}
-              onClick={() => setStatusFilter(status)}
+              onClick={() =>
+                setStatusFilter((cur) => (cur === status ? "all" : status))
+              }
             >
               {OUTREACH_STATUS_LABELS[status]}
               <span className="tabular-nums text-white/45">({count})</span>
             </FilterPill>
           ))}
-
-          {/* freshness toggle — orthogonal to status, so set apart by a divider */}
-          <span
-            aria-hidden="true"
-            className="mx-0.5 h-4 w-px self-center bg-[var(--silver-line)]"
-          />
-          <FilterPill
-            active={freshOnly}
-            dot="bg-emerald-400"
-            onClick={() => setFreshOnly((v) => !v)}
-            title="Show only companies with a role posted in the last 7 days (fresh hiring activity), from real posting dates — not never-seen-before."
-          >
-            Posted this week
-            <span className="tabular-nums text-white/45">· {freshCount}</span>
-          </FilterPill>
         </div>
       </div>
 
@@ -421,7 +504,11 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
         aria-live="polite"
         aria-atomic="true"
       >
-        {filtered.length.toLocaleString("en-IN")}{" "}
+        {hasMore
+          ? `Showing ${shown.length.toLocaleString(
+              "en-IN"
+            )} of ${filtered.length.toLocaleString("en-IN")} `
+          : `${filtered.length.toLocaleString("en-IN")} `}
         {filtered.length === 1 ? "company" : "companies"}
         {query.trim() ? ` matching “${query.trim()}”` : ""}
       </p>
@@ -458,7 +545,7 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
+                {shown.map((c) => (
                   <OutreachRow
                     key={c.slug}
                     company={c}
@@ -472,7 +559,7 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
 
           {/* mobile / tablet cards */}
           <ul className="mt-4 flex flex-col gap-3 lg:hidden">
-            {filtered.map((c) => (
+            {shown.map((c) => (
               <li key={c.slug}>
                 <OutreachCard
                   company={c}
@@ -482,9 +569,66 @@ export function OutreachTable({ companies }: { companies: CompanyOutreach[] }) {
               </li>
             ))}
           </ul>
+
+          {/* load more — keeps the growing list cheap to render */}
+          {hasMore && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full border border-[var(--silver-bright)] bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition-colors",
+                  "hover:bg-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                )}
+              >
+                Load more
+                <span className="tabular-nums text-white/55">
+                  ({(filtered.length - shown.length).toLocaleString("en-IN")} more)
+                </span>
+              </button>
+            </div>
+          )}
         </>
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Select pill — styled native <select> matching the glass aesthetic  */
+/* ------------------------------------------------------------------ */
+
+function SelectPill({
+  value,
+  onChange,
+  ariaLabel,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative inline-flex shrink-0 items-center">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        className={clsx(
+          "appearance-none rounded-full border border-[var(--silver-line)] bg-white/[0.06] py-2.5 pl-4 pr-9 text-sm font-medium text-white",
+          "backdrop-blur-md transition-colors duration-200 hover:border-white/25 hover:bg-white/[0.1]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+          "[&>option]:bg-[#0f111a] [&>option]:text-white"
+        )}
+      >
+        {children}
+      </select>
+      <ChevronDownIcon
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3.5 h-3.5 w-3.5 text-white/45"
+      />
+    </div>
   );
 }
 
@@ -529,19 +673,59 @@ function FilterPill({
 /*  Shared cell sub-components                                         */
 /* ------------------------------------------------------------------ */
 
-/** Green "● N this week" pill for companies with a role posted in the last 7d. */
-function FreshBadge({ company }: { company: CompanyOutreach }) {
-  if (!company.postedThisWeek) return null;
-  const n = company.freshRoleCount;
+/** Format an ISO "YYYY-MM-DD" as a short, locale-stable "5 May 2026". */
+function formatLedgerDate(iso: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return iso;
+  return new Date(t).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Lifecycle status badge from the ledger:
+ *   - green "Hiring now" when the company has open roles in the latest run,
+ *   - a sky "New" chip when it first appeared within the last 7 days,
+ *   - a muted "Dormant · last seen {date}" otherwise (no live roles).
+ * Hiring + New can co-occur (a brand-new company that's hiring shows both).
+ */
+function StatusBadge({ company }: { company: CompanyOutreach }) {
   return (
-    <span
-      title={`${n} ${
-        n === 1 ? "role" : "roles"
-      } posted in the last 7 days (fresh hiring activity, from real posting dates)`}
-      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-inset ring-emerald-400/25"
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-      {n} this week
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {company.currentlyHiring && (
+        <span
+          title="Open roles in the latest run — actively hiring now"
+          className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-inset ring-emerald-400/25"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          Hiring now
+        </span>
+      )}
+      {company.isNewCompany && (
+        <span
+          title={`New to the ledger — first seen ${formatLedgerDate(
+            company.firstSeen
+          )}`}
+          className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2 py-0.5 text-[11px] font-medium text-sky-200 ring-1 ring-inset ring-sky-400/25"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+          New
+        </span>
+      )}
+      {company.dormant && (
+        <span
+          title={`No live roles in the latest run — last seen ${formatLedgerDate(
+            company.lastSeen
+          )}`}
+          className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/50 ring-1 ring-inset ring-white/15"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-white/35" />
+          Dormant · {formatLedgerDate(company.lastSeen)}
+        </span>
+      )}
     </span>
   );
 }
@@ -677,6 +861,120 @@ function OutreachActions({ company }: { company: CompanyOutreach }) {
       >
         Copy InMail
       </CopyButton>
+      <FollowUpMenu company={company} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Follow-up menu — copy Touch 2 / Touch 3 of the sequence            */
+/* ------------------------------------------------------------------ */
+
+/** Build the clipboard payload for one follow-up touch (subject + body). */
+function followUpPayload(company: CompanyOutreach, step: 2 | 3): string {
+  const { subject, body } = followUpTemplate(company, step);
+  return `Subject: ${subject}\n\n${body}`;
+}
+
+/**
+ * A small "Copy follow-up ▾" control that reveals the two follow-up touches
+ * (step 2 = +4-day nudge, step 3 = +7-day final). Each item copies that touch's
+ * subject + body to the clipboard and flashes a check. Closes on outside click,
+ * Escape, or after a copy.
+ */
+function FollowUpMenu({ company }: { company: CompanyOutreach }) {
+  const [open, setOpen] = useState(false);
+  const [copiedStep, setCopiedStep] = useState<2 | 3 | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const copyStep = useCallback(
+    async (step: 2 | 3) => {
+      const ok = await copyText(followUpPayload(company, step));
+      if (ok) {
+        setCopiedStep(step);
+        window.setTimeout(() => setCopiedStep(null), 1400);
+      }
+      setOpen(false);
+    },
+    [company]
+  );
+
+  return (
+    <div ref={wrapRef} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Copy a follow-up email for ${company.name}`}
+        title="Copy a follow-up touch (step 2 nudge / step 3 final)"
+        className={clsx(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all duration-200",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+          copiedStep
+            ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-200"
+            : "border-[var(--silver-line)] bg-white/[0.05] text-white/70 hover:border-white/25 hover:bg-white/[0.1] hover:text-white"
+        )}
+      >
+        {copiedStep ? (
+          <CheckIcon className="h-3.5 w-3.5" />
+        ) : (
+          <CopyIcon className="h-3.5 w-3.5" />
+        )}
+        Copy follow-up
+        <ChevronDownIcon className="h-3 w-3 text-white/45" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className={clsx(
+            "absolute right-0 top-full z-20 mt-1.5 min-w-[14rem] overflow-hidden rounded-xl border border-[var(--silver-line)] p-1",
+            "bg-[#11131c]/95 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.7)] backdrop-blur-xl"
+          )}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => copyStep(2)}
+            className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-xs text-white/80 transition-colors hover:bg-white/[0.08] focus-visible:outline-none focus-visible:bg-white/[0.08]"
+          >
+            <span className="font-medium text-white">Touch 2 · nudge</span>
+            <span className="text-[11px] text-white/45">
+              Short reminder · send ~4 days after the first email
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => copyStep(3)}
+            className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-xs text-white/80 transition-colors hover:bg-white/[0.08] focus-visible:outline-none focus-visible:bg-white/[0.08]"
+          >
+            <span className="font-medium text-white">Touch 3 · final</span>
+            <span className="text-[11px] text-white/45">
+              Brief final follow-up · send ~7 days after the first email
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -719,7 +1017,7 @@ function OutreachRow({
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/55">
               <DisciplineDots company={company} />
               <span>{company.city}</span>
-              <FreshBadge company={company} />
+              <StatusBadge company={company} />
             </div>
             {company.domainVerified && company.domain && (
               <p className="mt-0.5 truncate text-xs text-white/40">
@@ -804,7 +1102,7 @@ function OutreachCard({
                 · {company.openRoles}{" "}
                 {company.openRoles === 1 ? "role" : "roles"}
               </span>
-              <FreshBadge company={company} />
+              <StatusBadge company={company} />
             </div>
           </div>
         </div>

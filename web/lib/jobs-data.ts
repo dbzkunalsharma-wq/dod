@@ -2,7 +2,12 @@ import { cache } from "react";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { jobSlug } from "./jobs";
-import type { Job, JobsFeed, StatsSnapshot } from "./types";
+import type {
+  CompanyLedger,
+  Job,
+  JobsFeed,
+  StatsSnapshot,
+} from "./types";
 
 /**
  * Server-only loader for the jobs feed.
@@ -22,6 +27,11 @@ const STATS_HISTORY_PATH = path.join(
   process.cwd(),
   "public",
   "stats-history.json"
+);
+const LEDGER_PATH = path.join(
+  process.cwd(),
+  "public",
+  "companies-ledger.json"
 );
 
 export const loadJobsFeed = cache(async (): Promise<JobsFeed> => {
@@ -59,5 +69,27 @@ export const loadStatsHistory = cache(async (): Promise<StatsSnapshot[]> => {
     return Array.isArray(parsed) ? (parsed as StatsSnapshot[]) : [];
   } catch {
     return [];
+  }
+});
+
+/**
+ * The growing company outreach ledger (public/companies-ledger.json) — a JSON
+ * object keyed by an internal company key. Returns `{}` when the file is
+ * missing or malformed (or not a plain object), so the outreach surfaces
+ * degrade gracefully to an empty list. Wrapped in `cache()` like the feed, so
+ * the (potentially large) file is read + parsed once per build/request pass and
+ * shared across the page and the CSV route. Server-only — `domain`s in here are
+ * already MX-verified, so no DNS is done at build time.
+ */
+export const loadCompanyLedger = cache(async (): Promise<CompanyLedger> => {
+  try {
+    const raw = await fs.readFile(LEDGER_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as CompanyLedger;
+  } catch {
+    return {};
   }
 });

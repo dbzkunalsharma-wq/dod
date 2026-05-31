@@ -1,20 +1,19 @@
 import type { Metadata } from "next";
 import { OutreachTable } from "@/components/OutreachTable";
 import { PageNav } from "@/components/PageNav";
-import { loadAllJobs } from "@/lib/jobs-data";
-import {
-  applyDomainVerification,
-  buildOutreach,
-  collectOutreachDomains,
-} from "@/lib/outreach";
-import { mailableDomains } from "@/lib/verify-domains";
+import { loadCompanyLedger } from "@/lib/jobs-data";
+import { buildOutreachFromLedger } from "@/lib/outreach";
 
 /**
  * Placement outreach (server) — an INTERNAL, UNLISTED tool for a college
- * placement cell: every company hiring designers in India on DOD, turned into a
- * ready outreach list of company-level official contacts with a hiring-intent
- * score. Computed deterministically from the feed (`buildOutreach`); the table
- * itself is a client island.
+ * placement cell, now driven by the GROWING company ledger
+ * (`public/companies-ledger.json`): every company we've ever seen hiring
+ * designers in India, accumulated across daily runs, turned into a ready
+ * outreach list of company-level official contacts with a hiring-intent score
+ * and a three-touch follow-up sequence. Computed deterministically from the
+ * ledger (`buildOutreachFromLedger`) with NO build-time network I/O — the
+ * ledger's domains are already MX-verified at ingest. The table is a client
+ * island that paginates the (large, growing) list.
  *
  * NOINDEX + not in the nav / sitemap, and disallowed in robots.txt — the app
  * has no auth, so this page is "security by obscurity": shareable by URL with
@@ -30,16 +29,13 @@ export const metadata: Metadata = {
 };
 
 export default async function OutreachPage() {
-  const jobs = await loadAllJobs();
-  const rows = buildOutreach(jobs);
-  // MX-verify at build time the UNION of every guessed `domain` PLUS the domain
-  // of every recruiter email the companies published (the part after "@"), in
-  // one deduped lookup. applyDomainVerification then suppresses both guessed
-  // emails AND posted emails sitting on domains that don't resolve / accept
-  // mail — so every address surfaced anywhere is MX-validated.
-  const mailable = await mailableDomains(collectOutreachDomains(rows));
-  const companies = applyDomainVerification(rows, mailable);
+  // Driven by the growing ledger. The ledger's domains are ALREADY MX-verified
+  // at ingest, so there is NO build-time DNS here — `domainVerified` is set
+  // directly from the presence of a verified `domain` on each row.
+  const ledger = await loadCompanyLedger();
+  const companies = buildOutreachFromLedger(ledger);
 
+  const hiringNow = companies.filter((c) => c.currentlyHiring).length;
   const withDomain = companies.filter((c) => c.domainVerified).length;
   const withPosted = companies.filter(
     (c) => c.postedEmails.length > 0 || c.postedPhones.length > 0
@@ -60,10 +56,15 @@ export default async function OutreachPage() {
             </span>
           </div>
           <p className="mt-2 max-w-3xl text-sm text-white/60 sm:text-base">
-            Company-level official contacts from{" "}
-            {companies.length.toLocaleString("en-IN")} companies hiring designers
-            in India — ranked by hiring intent, so the placement cell can invite
-            the hottest employers to recruit first.
+            Company-level official contacts from a growing ledger of{" "}
+            {companies.length.toLocaleString("en-IN")} companies seen hiring
+            designers in India —{" "}
+            <span className="text-white/80">
+              {hiringNow.toLocaleString("en-IN")} hiring right now
+            </span>{" "}
+            — ranked by hiring intent, with a three-touch follow-up sequence, so
+            the placement cell can invite the hottest employers to recruit first.
+            The ledger grows every day.
           </p>
 
           {/* honest note */}
@@ -77,15 +78,15 @@ export default async function OutreachPage() {
               <code className="rounded bg-white/10 px-1.5 py-0.5 text-[0.85em] text-white/85">
                 hr@
               </code>{" "}
-              are common address patterns derived from each company&rsquo;s
-              domain, now{" "}
+              are common address patterns derived from each company&rsquo;s{" "}
               <span className="text-white/85">
-                MX-verified — unresolved domain guesses are dropped
-              </span>
-              , so the addresses shown can actually receive mail. Green badges
-              are recruiter emails the company itself published in a job post
-              (already verified by them). For verified individual recruiter
-              emails at scale, hit{" "}
+                already MX-verified domain
+              </span>{" "}
+              (verified at ingest — companies without a verified domain show no
+              guessed address), so the addresses shown can actually receive
+              mail. Green badges are recruiter emails the company itself
+              published in a job post (already verified by them). For verified
+              individual recruiter emails at scale, hit{" "}
               <span className="font-medium text-white/85">Copy all domains</span>{" "}
               (or download the CSV) and run the verified domains through{" "}
               <a
@@ -110,7 +111,9 @@ export default async function OutreachPage() {
             <p className="mt-2 text-xs text-white/45">
               {withDomain.toLocaleString("en-IN")} companies have an MX-verified
               domain · {withPosted.toLocaleString("en-IN")} published a direct
-              email/phone in a post. Status is saved locally in your browser only.
+              email/phone in a post. Download the CSV for a campaign-ready,
+              three-touch mail-merge (Mailmeteor / GMass / Apollo). Status is
+              saved locally in your browser only.
             </p>
           </div>
         </div>

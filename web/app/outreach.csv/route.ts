@@ -1,42 +1,43 @@
-import { loadAllJobs } from "@/lib/jobs-data";
+import { loadCompanyLedger } from "@/lib/jobs-data";
 import {
-  applyDomainVerification,
-  buildOutreach,
   buildOutreachCsv,
-  collectOutreachDomains,
+  buildOutreachFromLedger,
+  type OutreachSequence,
 } from "@/lib/outreach";
-import { emailTemplate } from "@/lib/outreach-templates";
-import { mailableDomains } from "@/lib/verify-domains";
+import { emailTemplate, followUpTemplate } from "@/lib/outreach-templates";
 
 /**
- * `/outreach.csv` — the placement-outreach list as a downloadable, RFC-4180
- * CSV. Statically generated (`force-static`): it reads the feed off disk and
- * MX-verifies the guessed domains ONCE at build time, so the per-domain DNS
- * lookups never run on a per-request basis. The daily auto-refresh that
- * updates the feed re-runs the build, refreshing this export. NOINDEX is
- * enforced via the `X-Robots-Tag` header here and the `disallow` rule in
- * app/robots.ts.
+ * `/outreach.csv` — the placement-outreach list as a downloadable, campaign-
+ * ready, RFC-4180 CSV that drops cleanly into Mailmeteor / GMass / Apollo.
+ * Statically generated (`force-static`): it reads the GROWING company ledger
+ * (`public/companies-ledger.json`) off disk. The ledger's domains are ALREADY
+ * MX-verified at ingest, so this route does NO network I/O of any kind — no
+ * per-request (or per-build) DNS. The daily auto-refresh that updates the
+ * ledger re-runs the build, refreshing this export. NOINDEX is enforced via the
+ * `X-Robots-Tag` header here and the `disallow` rule in app/robots.ts.
  *
- * Columns (see `OUTREACH_CSV_COLUMNS`): company, domain, careers_email,
- * hr_email, talent_email, careers_url, website_url, linkedin_company_search,
- * linkedin_ta_search, posted_emails, posted_phones, open_roles, disciplines,
- * locations, score, score_reasons, personalization, draft_email,
- * domain_verified, posted_this_week, fresh_role_count. (`posted_emails` is the
- * MX-filtered list — published addresses on dead domains are dropped.)
+ * Columns (see `OUTREACH_CSV_COLUMNS`): the company/contact/score columns, plus
+ * the campaign columns currently_hiring, last_seen, first_seen, touch1_subject,
+ * touch1_body, touch2_body (follow-up step 2), touch3_body (follow-up step 3),
+ * and an empty cohort_portfolio_link placeholder. Bodies are the filled
+ * templates with [brackets] for the team to fill once; CSV-escaped + multiline.
  */
 
 export const dynamic = "force-static";
 
 export async function GET(): Promise<Response> {
-  const jobs = await loadAllJobs();
-  const rows = buildOutreach(jobs);
-  // Same MX-verification overlay as the /outreach page, over the UNION of
-  // guessed domains + published-email domains in one deduped lookup: drop both
-  // guessed AND posted emails on domains that don't resolve / accept mail.
-  // Runs once at build.
-  const mailable = await mailableDomains(collectOutreachDomains(rows));
-  const companies = applyDomainVerification(rows, mailable);
-  const csv = buildOutreachCsv(companies, (c) => emailTemplate(c).body);
+  const ledger = await loadCompanyLedger();
+  const companies = buildOutreachFromLedger(ledger);
+
+  const csv = buildOutreachCsv(companies, (c): OutreachSequence => {
+    const touch1 = emailTemplate(c);
+    return {
+      touch1Subject: touch1.subject,
+      touch1Body: touch1.body,
+      touch2Body: followUpTemplate(c, 2).body,
+      touch3Body: followUpTemplate(c, 3).body,
+    };
+  });
 
   return new Response(csv, {
     headers: {

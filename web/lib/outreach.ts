@@ -1,4 +1,4 @@
-import { buildCompanies, type CompanySummary } from "./companies";
+import { buildCompanies, companySlug, type CompanySummary } from "./companies";
 import {
   DISCIPLINE_MAP,
   LOCATION_LABELS,
@@ -8,7 +8,7 @@ import {
   normalizeCompany,
   reputationTier,
 } from "./jobs";
-import type { Discipline, Job } from "./types";
+import type { CompanyLedger, Discipline, Job, LedgerEntry } from "./types";
 
 /* ------------------------------------------------------------------ */
 /*  Placement-outreach model (pure, deterministic — no ML, no network) */
@@ -86,6 +86,27 @@ export interface CompanyOutreach {
   postedPhones: string[];
   /** One-line personalization hook for the outreach email. */
   personalization: string;
+  /* ---- Ledger status fields (set by `buildOutreachFromLedger`) ---------- */
+  /**
+   * `open_roles > 0` in the latest run — the company is actively hiring right
+   * now. (The jobs-feed `buildOutreach` leaves this `true`, since every grouped
+   * company has ≥1 live role.)
+   */
+  currentlyHiring: boolean;
+  /** `open_roles === 0` — listed in the ledger but not currently hiring. */
+  dormant: boolean;
+  /** ISO "YYYY-MM-DD" the company was last seen in the feed (ledger only; else null). */
+  lastSeen: string | null;
+  /** ISO "YYYY-MM-DD" the company was first added to the ledger (ledger only; else null). */
+  firstSeen: string | null;
+  /** `first_seen` within the last 7 days of the build clock — a new arrival. */
+  isNewCompany: boolean;
+  /**
+   * Currently hiring AND last seen within the last 7 days — fresh, live hiring
+   * activity. The ledger analogue of `postedThisWeek` (which, for the ledger,
+   * tracks fresh posting recency rather than per-role posted_at dates).
+   */
+  freshThisWeek: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -544,6 +565,14 @@ export function buildOutreach(
       postedEmails,
       postedPhones,
       personalization,
+      // Jobs-feed companies are always "currently hiring" (every group has ≥1
+      // live role); the ledger-specific status fields don't apply here.
+      currentlyHiring: c.count > 0,
+      dormant: c.count === 0,
+      lastSeen: null,
+      firstSeen: null,
+      isNewCompany: false,
+      freshThisWeek: hasRecent7d,
     } satisfies CompanyOutreach;
   });
 
@@ -555,6 +584,250 @@ export function buildOutreach(
   );
 
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/*  buildOutreachFromLedger — the GROWING-ledger entry point           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * City aliases for bucketing the ledger's FREE-FORM location strings (e.g.
+ * "Bengaluru, India", "Gurugram") into one clean label. Mirrors the jobs
+ * feed's city buckets; matched as case-insensitive substrings. Kept local so
+ * the ledger path doesn't depend on a job object (the feed's `locationKey`
+ * takes a `Job`). "Remote" is detected separately (it can co-occur with a city).
+ */
+const LEDGER_CITY_ALIASES: Array<{ label: string; aliases: string[] }> = [
+  { label: LOCATION_LABELS.bengaluru, aliases: ["bengaluru", "bangalore", "bengalore"] },
+  {
+    label: LOCATION_LABELS["delhi-ncr"],
+    aliases: ["delhi", "new delhi", "ncr", "gurgaon", "gurugram", "noida", "faridabad", "ghaziabad"],
+  },
+  { label: LOCATION_LABELS.mumbai, aliases: ["mumbai", "navi mumbai", "thane", "worli", "bombay"] },
+  { label: LOCATION_LABELS.hyderabad, aliases: ["hyderabad", "secunderabad"] },
+  { label: LOCATION_LABELS.pune, aliases: ["pune", "pimpri", "chinchwad"] },
+  { label: LOCATION_LABELS.chennai, aliases: ["chennai", "madras"] },
+  { label: LOCATION_LABELS.kolkata, aliases: ["kolkata", "calcutta", "howrah"] },
+  { label: LOCATION_LABELS.ahmedabad, aliases: ["ahmedabad", "gandhinagar"] },
+];
+
+const REMOTE_RE = /\bremote\b|work from home|wfh\b/;
+
+/**
+ * Primary city label for a ledger company from its `locations` strings:
+ *   - one concrete city across all strings → that city's label,
+ *   - several concrete cities → "Multiple",
+ *   - only remote → "Remote",
+ *   - nothing recognisable → "—".
+ * Order follows `LEDGER_CITY_ALIASES` (biggest hubs first), like the feed.
+ */
+function primaryCityFromStrings(locations: string[]): string {
+  const cities = new Set<string>();
+  let sawRemote = false;
+  for (const raw of locations) {
+    const loc = (raw ?? "").toLowerCase();
+    if (!loc.trim()) continue;
+    let matched = false;
+    for (const { label, aliases } of LEDGER_CITY_ALIASES) {
+      if (aliases.some((a) => loc.includes(a))) {
+        cities.add(label);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched && REMOTE_RE.test(loc)) sawRemote = true;
+  }
+  if (cities.size === 1) return [...cities][0];
+  if (cities.size > 1) return "Multiple";
+  if (sawRemote) return "Remote";
+  return "—";
+}
+
+/** Parse an ISO "YYYY-MM-DD" (or full ISO) ledger date to epoch ms, or NaN. */
+function parseLedgerDate(value: string | null | undefined): number {
+  if (!value) return NaN;
+  return new Date(value).getTime();
+}
+
+/** Keep only the disciplines we know how to label (guards a dirty ledger). */
+function validDisciplines(input: unknown): Discipline[] {
+  if (!Array.isArray(input)) return [];
+  const out: Discipline[] = [];
+  for (const d of input) {
+    if (typeof d === "string" && d in DISCIPLINE_MAP && !out.includes(d as Discipline)) {
+      out.push(d as Discipline);
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the company-level outreach list from the GROWING company ledger
+ * (`public/companies-ledger.json`). Unlike `buildOutreach` (which derives
+ * everything from the live jobs feed), this reads pre-aggregated, pre-verified
+ * ledger rows: the `domain` is ALREADY MX-verified at ingest, so we surface the
+ * conventional `careers@`/`hr@` mailboxes + careers/website URLs directly when a
+ * domain is present and suppress them (null) when it isn't — with NO network I/O.
+ *
+ * Per entry:
+ *   - slug = `companySlug(name)`; name, logo, disciplines, locations come from
+ *     the row; `openRoles = open_roles`.
+ *   - `domainVerified = !!domain`; emails/careersUrl/websiteUrl only when domain.
+ *   - `postedEmails`/`postedPhones` = the row's published contacts (already
+ *     platform-filtered upstream — surfaced as-is).
+ *   - status: `currentlyHiring = open_roles > 0`, `dormant = open_roles === 0`,
+ *     `isNewCompany` = first_seen within 7d of `now`, `freshThisWeek` =
+ *     currentlyHiring && last_seen within 7d of `now`.
+ *
+ * Score reuses the hiring-intent formula adapted to ledger fields: open-roles
+ * volume + recency (from `last_seen`, only for currently-hiring rows) +
+ * reputationTier + has-posted-email + verified-domain. Dormant companies get no
+ * recency boost (they score lower) but are STILL listed.
+ *
+ * Sort: currently-hiring first, then score desc, then name A–Z. `now` is
+ * injectable for deterministic tests.
+ */
+export function buildOutreachFromLedger(
+  ledger: CompanyLedger,
+  now: number = Date.now()
+): CompanyOutreach[] {
+  const entries = ledger && typeof ledger === "object" ? Object.values(ledger) : [];
+
+  const rows: CompanyOutreach[] = [];
+  // Track slug collisions so two distinct ledger names never share a row key.
+  const usedSlugs = new Map<string, number>();
+  const uniqueSlug = (base: string): string => {
+    const root = base || "company";
+    const seen = usedSlugs.get(root);
+    if (!seen) {
+      usedSlugs.set(root, 1);
+      return root;
+    }
+    let n = seen + 1;
+    let candidate = `${root}-${n}`;
+    while (usedSlugs.has(candidate)) {
+      n += 1;
+      candidate = `${root}-${n}`;
+    }
+    usedSlugs.set(root, n);
+    usedSlugs.set(candidate, 1);
+    return candidate;
+  };
+
+  for (const entry of entries as LedgerEntry[]) {
+    const name = (entry?.name ?? "").trim();
+    if (!name) continue;
+
+    const domain = entry.domain ? entry.domain.trim().toLowerCase() || null : null;
+    const domainVerified = !!domain;
+    const emails = domain
+      ? {
+          careers: `careers@${domain}`,
+          hr: `hr@${domain}`,
+          talent: `talent@${domain}`,
+          recruiting: `recruiting@${domain}`,
+          jobs: `jobs@${domain}`,
+        }
+      : null;
+
+    const disciplines = validDisciplines(entry.disciplines);
+    const locations = Array.isArray(entry.locations)
+      ? entry.locations.filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+      : [];
+    const openRoles = Math.max(0, Number(entry.open_roles) || 0);
+    const currentlyHiring = openRoles > 0;
+    const dormant = openRoles === 0;
+
+    // Recency from last_seen / arrival from first_seen.
+    const lastSeenMs = parseLedgerDate(entry.last_seen);
+    const firstSeenMs = parseLedgerDate(entry.first_seen);
+    const lastSeenAge = Number.isNaN(lastSeenMs) ? Infinity : now - lastSeenMs;
+    const firstSeenAge = Number.isNaN(firstSeenMs) ? Infinity : now - firstSeenMs;
+    const seenWithin7d = lastSeenAge >= -DAY_MS && lastSeenAge <= 7 * DAY_MS;
+    const seenWithin14d = lastSeenAge >= -DAY_MS && lastSeenAge <= 14 * DAY_MS;
+    const isNewCompany = firstSeenAge >= -DAY_MS && firstSeenAge <= 7 * DAY_MS;
+    const freshThisWeek = currentlyHiring && seenWithin7d;
+
+    const postedEmails = Array.isArray(entry.posted_emails)
+      ? entry.posted_emails.filter((e): e is string => typeof e === "string" && e.includes("@"))
+      : [];
+    const postedPhones = Array.isArray(entry.posted_phones)
+      ? entry.posted_phones.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+      : [];
+
+    // Hiring-intent score, reusing the shared formula. Recency only counts for
+    // currently-hiring rows (a dormant company's "last seen" is not live demand),
+    // so dormant rows score lower but remain listed.
+    const { score, reasons } = scoreCompany({
+      openRoles,
+      latestTime: Number.isNaN(lastSeenMs) ? 0 : lastSeenMs,
+      hasRecentRole7d: currentlyHiring && seenWithin7d,
+      hasRecentRole14d: currentlyHiring && seenWithin14d,
+      repTier: reputationTier(name),
+      hasDirectEmail: postedEmails.length > 0,
+      // No per-role salary in the ledger — verified domain is the analogous
+      // "complete, reachable target" signal worth a small nudge.
+      hasSalary: domainVerified,
+    });
+
+    const city = primaryCityFromStrings(locations);
+    const enc = encodeURIComponent(name);
+    const linkedinCompanySearch = `https://www.linkedin.com/search/results/companies/?keywords=${enc}`;
+    const linkedinTaSearch = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(
+      `${name} (talent acquisition OR recruiter OR HR)`
+    )}`;
+
+    const where = city && city !== "—" && city !== "Multiple" ? ` in ${city}` : "";
+    const personalization = currentlyHiring
+      ? `you're currently hiring ${openRoles} ${disciplineLabels(disciplines)} design ${
+          openRoles === 1 ? "role" : "roles"
+        }${where}`
+      : `you've recently hired ${disciplineLabels(disciplines)} design talent${where}`;
+
+    rows.push({
+      slug: uniqueSlug(companySlug(name)),
+      name,
+      logo: entry.logo?.trim() || null,
+      domain,
+      openRoles,
+      // Ledger has no per-role posted_at; treat fresh recency as the week's
+      // activity so the existing FreshBadge / "fresh" sort keep working.
+      freshRoleCount: freshThisWeek ? openRoles : 0,
+      postedThisWeek: freshThisWeek,
+      disciplines,
+      locations,
+      topRole: name,
+      city,
+      isTop: reputationTier(name) >= 1,
+      score,
+      scoreReasons: reasons,
+      emails,
+      careersUrl: domain ? `https://${domain}/careers` : null,
+      websiteUrl: domain ? `https://${domain}` : null,
+      domainVerified,
+      linkedinCompanySearch,
+      linkedinTaSearch,
+      postedEmails,
+      postedPhones,
+      personalization,
+      currentlyHiring,
+      dormant,
+      lastSeen: entry.last_seen ?? null,
+      firstSeen: entry.first_seen ?? null,
+      isNewCompany,
+      freshThisWeek,
+    } satisfies CompanyOutreach);
+  }
+
+  // Currently-hiring first, then hiring-intent score desc, then name A–Z.
+  rows.sort(
+    (a, b) =>
+      Number(b.currentlyHiring) - Number(a.currentlyHiring) ||
+      b.score - a.score ||
+      a.name.localeCompare(b.name, "en", { sensitivity: "base" })
+  );
+
+  return rows;
 }
 
 /* ------------------------------------------------------------------ */
@@ -663,7 +936,29 @@ export const OUTREACH_CSV_COLUMNS = [
   "domain_verified",
   "posted_this_week",
   "fresh_role_count",
+  // ---- Campaign / status columns (for Mailmeteor / GMass / Apollo) -------
+  "currently_hiring",
+  "last_seen",
+  "first_seen",
+  "touch1_subject",
+  "touch1_body",
+  "touch2_body",
+  "touch3_body",
+  "cohort_portfolio_link",
 ] as const;
+
+/**
+ * The three-touch mail-merge sequence for one company, supplied by the route
+ * (which owns the template module). `touch1` is the main outreach email
+ * (subject + body); `touch2`/`touch3` are the follow-up bodies. Bodies keep the
+ * `[bracketed]` placeholders for the team to fill once before sending.
+ */
+export interface OutreachSequence {
+  touch1Subject: string;
+  touch1Body: string;
+  touch2Body: string;
+  touch3Body: string;
+}
 
 /** RFC-4180 quote: wrap in double-quotes, doubling any embedded quotes. */
 function csvQuote(value: string): string {
@@ -672,11 +967,16 @@ function csvQuote(value: string): string {
 
 /**
  * One CSV data row (in `OUTREACH_CSV_COLUMNS` order) for a company. Multi-value
- * fields are " | "-joined; `draftEmail` is the full template body with newlines
- * preserved (RFC-4180 allows literal newlines inside a quoted field, and Excel
- * / Sheets honour them). All fields are quoted + escaped.
+ * fields are " | "-joined; the email/follow-up bodies keep their newlines
+ * (RFC-4180 allows literal newlines inside a quoted field, and Excel / Sheets /
+ * Mailmeteor honour them). `cohort_portfolio_link` is intentionally an EMPTY
+ * placeholder column for the team to fill per cohort. All fields are quoted +
+ * escaped. `seq` is the three-touch sequence; `draft_email` mirrors touch 1.
  */
-export function outreachToCsvRow(c: CompanyOutreach, draftEmail: string): string {
+export function outreachToCsvRow(
+  c: CompanyOutreach,
+  seq: OutreachSequence
+): string {
   const cells = [
     c.name,
     c.domain ?? "",
@@ -695,25 +995,35 @@ export function outreachToCsvRow(c: CompanyOutreach, draftEmail: string): string
     String(c.score),
     c.scoreReasons.join(" | "),
     c.personalization,
-    draftEmail,
+    seq.touch1Body,
     c.domainVerified ? "true" : "false",
     c.postedThisWeek ? "true" : "false",
     String(c.freshRoleCount),
+    // ---- campaign / status columns ----
+    c.currentlyHiring ? "true" : "false",
+    c.lastSeen ?? "",
+    c.firstSeen ?? "",
+    seq.touch1Subject,
+    seq.touch1Body,
+    seq.touch2Body,
+    seq.touch3Body,
+    "", // cohort_portfolio_link — empty placeholder for the team to fill
   ];
   return cells.map((v) => csvQuote(v ?? "")).join(",");
 }
 
 /**
- * Build the full CSV document (header + one row per company). `draftFor`
- * supplies the per-company draft-email body (so the CSV builder stays decoupled
- * from the template module). Prefixed with a UTF-8 BOM so Excel reads ₹ / accents
- * correctly. Lines are CRLF-joined per RFC-4180.
+ * Build the full CSV document (header + one row per company). `sequenceFor`
+ * supplies the per-company three-touch mail-merge sequence (so the CSV builder
+ * stays decoupled from the template module). Prefixed with a UTF-8 BOM so Excel
+ * reads ₹ / accents correctly. Lines are CRLF-joined per RFC-4180 — drops
+ * cleanly into Mailmeteor / GMass / Apollo.
  */
 export function buildOutreachCsv(
   rows: CompanyOutreach[],
-  draftFor: (c: CompanyOutreach) => string
+  sequenceFor: (c: CompanyOutreach) => OutreachSequence
 ): string {
   const header = OUTREACH_CSV_COLUMNS.map((h) => csvQuote(h)).join(",");
-  const body = rows.map((c) => outreachToCsvRow(c, draftFor(c)));
+  const body = rows.map((c) => outreachToCsvRow(c, sequenceFor(c)));
   return `﻿${[header, ...body].join("\r\n")}\r\n`;
 }
