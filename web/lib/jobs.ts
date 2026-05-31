@@ -105,6 +105,7 @@ export const SOURCE_LABELS: Record<Source, string> = {
   greenhouse: "Greenhouse",
   lever: "Lever",
   ashby: "Ashby",
+  smartrecruiters: "SmartRecruiters",
   remoteok: "RemoteOK",
   telegram: "Telegram",
   internshala: "Internshala",
@@ -130,6 +131,7 @@ export const SOURCE_ORDER: Source[] = [
   "greenhouse",
   "lever",
   "ashby",
+  "smartrecruiters",
   "remoteok",
   "telegram",
 ];

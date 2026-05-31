@@ -1,6 +1,6 @@
 [
   {
-    "_note": "Watchlist for DOD's ATS scraper. Entries {company, platform, slug}; platform = greenhouse|lever|ashby|workday. A role is kept if India-located OR remote-open-to-India (geo.accepts_india). Design-rich + remote-friendly employers listed; add your own design-forward companies. Lines starting with _ are ignored by the loader. ashby slugs are case-sensitive."
+    "_note": "Watchlist for DOD's ATS scraper. Entries {company, platform, slug}; platform = greenhouse|lever|ashby|smartrecruiters|workday. A role is kept if India-located OR remote-open-to-India (geo.accepts_india). Design-rich + remote-friendly employers listed; add your own design-forward companies. Lines starting with _ are ignored by the loader. ashby slugs are case-sensitive."
   },
   {"company": "Figma", "platform": "greenhouse", "slug": "figma"},
   {"company": "Duolingo", "platform": "greenhouse", "slug": "duolingo"},
@@ -15,5 +15,37 @@
   {"company": "PhonePe", "platform": "greenhouse", "slug": "phonepe"},
   {"company": "Slice", "platform": "greenhouse", "slug": "slice"},
   {"company": "Meesho", "platform": "lever", "slug": "meesho"},
-  {"company": "Hevo Data", "platform": "lever", "slug": "hevodata"}
+  {"company": "Hevo Data", "platform": "lever", "slug": "hevodata"},
+  {"company": "Cars24", "platform": "smartrecruiters", "slug": "Cars24"},
+  {"company": "NoBroker", "platform": "smartrecruiters", "slug": "NoBroker"},
+  {"company": "Rebel Foods", "platform": "smartrecruiters", "slug": "RebelFoods"},
+  {"company": "Porter", "platform": "lever", "slug": "porter"},
+  {"company": "Unacademy", "platform": "smartrecruiters", "slug": "Unacademy"},
+  {"company": "Zeta", "platform": "lever", "slug": "zeta"},
+  {"company": "Atlan", "platform": "ashby", "slug": "atlan"},
+  {"company": "Mindtickle", "platform": "lever", "slug": "mindtickle"},
+  {"company": "HighRadius", "platform": "greenhouse", "slug": "highradius"},
+  {"company": "Druva", "platform": "greenhouse", "slug": "druva"},
+  {"company": "Freshworks", "platform": "smartrecruiters", "slug": "Freshworks"},
+  {"company": "Stripe", "platform": "greenhouse", "slug": "stripe"},
+  {"company": "Notion", "platform": "ashby", "slug": "notion"},
+  {"company": "Canva", "platform": "smartrecruiters", "slug": "Canva"},
+  {"company": "Airbnb", "platform": "greenhouse", "slug": "airbnb"},
+  {"company": "Twilio", "platform": "greenhouse", "slug": "twilio"},
+  {"company": "Dropbox", "platform": "greenhouse", "slug": "dropbox"},
+  {"company": "Pinterest", "platform": "greenhouse", "slug": "pinterest"},
+  {"company": "Plaid", "platform": "ashby", "slug": "plaid"},
+  {"company": "Databricks", "platform": "greenhouse", "slug": "databricks"},
+  {"company": "Snowflake", "platform": "ashby", "slug": "snowflake"},
+  {"company": "Confluent", "platform": "ashby", "slug": "confluent"},
+  {"company": "MongoDB", "platform": "greenhouse", "slug": "mongodb"},
+  {"company": "Elastic", "platform": "greenhouse", "slug": "elastic"},
+  {"company": "Robinhood", "platform": "greenhouse", "slug": "robinhood"},
+  {"company": "Brex", "platform": "greenhouse", "slug": "brex"},
+  {"company": "Deel", "platform": "ashby", "slug": "deel"},
+  {"company": "Webflow", "platform": "greenhouse", "slug": "webflow"},
+  {"company": "Vercel", "platform": "greenhouse", "slug": "vercel"},
+  {"company": "Amplitude", "platform": "greenhouse", "slug": "amplitude"},
+  {"company": "Asana", "platform": "greenhouse", "slug": "asana"},
+  {"company": "Grab", "platform": "smartrecruiters", "slug": "Grab"}
 ]

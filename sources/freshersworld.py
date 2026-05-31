@@ -130,34 +130,46 @@ def _to_job(card) -> dict | None:
     }
 
 
+def _fetch_html(url: str) -> str | None:
+    """GET the listing with a generous timeout + one retry. Freshersworld's search
+    page is genuinely slow (observed 45-60s to first byte) and the first attempt often
+    times out on a cold cache while the second succeeds, so 20s was giving up too early.
+    Returns the HTML on a 200, else None. Never raises."""
+    for attempt in (1, 2):
+        try:
+            resp = httpx.get(url, headers=_UA, timeout=70, follow_redirects=True)
+            if resp.status_code == 200:
+                return resp.text
+            log.warning("freshersworld: %s -> HTTP %s", url, resp.status_code)
+            return None
+        except Exception as e:  # noqa: BLE001 - slow/flaky request must not kill the run
+            log.warning("freshersworld: attempt %d/2 failed (%s)", attempt, e)
+    return None
+
+
 def fetch() -> list[dict]:
     """Scrape the Freshersworld design listing(s). Never raises."""
     jobs: list[dict] = []
     seen: set[str] = set()
     for slug in _SLUGS:
         url = f"{_HOST}/jobs/jobsearch/{slug}"
-        try:
-            resp = httpx.get(url, headers=_UA, timeout=20, follow_redirects=True)
-            if resp.status_code != 200:
-                log.warning("freshersworld: %s -> HTTP %s", slug, resp.status_code)
-                continue
-            cards = BeautifulSoup(resp.text, "html.parser").select("div.job-container")
-            if not cards:
-                continue
-            added = 0
-            for card in cards:
-                job = _to_job(card)
-                if job and job["id"] not in seen:
-                    seen.add(job["id"])
-                    jobs.append(job)
-                    added += 1
-            # All design slugs redirect to the same canonical board; once a slug adds
-            # nothing new, the remaining ones are duplicates -- stop early.
-            if added == 0:
-                break
-        except Exception as e:  # noqa: BLE001 - one bad request must not kill the rest
-            log.warning("freshersworld: %s failed (%s)", slug, e)
+        html = _fetch_html(url)
+        if not html:
             continue
+        cards = BeautifulSoup(html, "html.parser").select("div.job-container")
+        if not cards:
+            continue
+        added = 0
+        for card in cards:
+            job = _to_job(card)
+            if job and job["id"] not in seen:
+                seen.add(job["id"])
+                jobs.append(job)
+                added += 1
+        # All design slugs redirect to the same canonical board; once a slug adds
+        # nothing new, the remaining ones are duplicates -- stop early.
+        if added == 0:
+            break
     log.info("freshersworld: %d unique India design postings", len(jobs))
     return jobs
 

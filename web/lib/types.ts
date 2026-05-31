@@ -6,6 +6,7 @@ export type Source =
   | "greenhouse"
   | "lever"
   | "ashby"
+  | "smartrecruiters"
   | "remoteok"
   | "telegram"
   | "internshala"

@@ -173,6 +173,38 @@ def normalize_ashby(entry: dict, data: dict) -> list[dict]:
     return out
 
 
+def normalize_smartrecruiters(entry: dict, data: dict) -> list[dict]:
+    company = entry["company"]
+    slug = entry["slug"]
+    out = []
+    for j in data.get("content", []):
+        posting_id = j.get("id")
+        if not posting_id:
+            continue  # without an id we can't build a stable id/url; skip defensively
+        # location is a dict {city, region, country, remote}; join the present parts.
+        loc = j.get("location")
+        location = None
+        if isinstance(loc, dict):
+            parts = [loc.get("city"), loc.get("region"), loc.get("country")]
+            location = ", ".join(p for p in parts if p) or None
+        elif isinstance(loc, str):
+            location = loc
+        out.append({
+            "id": f"smartrecruiters:{slug}:{posting_id}",
+            "source": "smartrecruiters",
+            "title": j.get("name") or "",
+            "company": company,
+            "location": location,
+            "url": f"https://jobs.smartrecruiters.com/{slug}/{posting_id}",
+            "logo": None,  # the postings list endpoint carries no company-logo field
+            "contact": None,
+            "posted_at": _iso_date(j.get("releasedDate")),
+            "salary": None,  # the list endpoint carries no structured pay field
+            "description": "",  # list endpoint has no body; detail fetch omitted by design
+        })
+    return out
+
+
 def normalize_workday(entry: dict, data: dict) -> list[dict]:
     # Workday is per-tenant and messy (each company has its own host + endpoint shape
     # under /wday/cxs/<tenant>/<site>/jobs, POST-based). Deliberately a stub: callers
@@ -187,12 +219,14 @@ def normalize_workday(entry: dict, data: dict) -> list[dict]:
 _GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
 _LEVER_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
 _ASHBY_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=false"
+_SMARTRECRUITERS_URL = "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100"
 
 # platform -> (url template, normalizer). workday handled separately (no fetch).
 _PLATFORMS = {
     "greenhouse": (_GREENHOUSE_URL, normalize_greenhouse),
     "lever": (_LEVER_URL, normalize_lever),
     "ashby": (_ASHBY_URL, normalize_ashby),
+    "smartrecruiters": (_SMARTRECRUITERS_URL, normalize_smartrecruiters),
 }
 
 
@@ -368,6 +402,32 @@ def _run_offline_tests():
     assert ash2[0]["url"] == "u"  # only applyUrl present
     assert ash2[0]["posted_at"] == "2026-01-02"
     assert "Plain" in ash2[0]["description"] and "<" not in ash2[0]["description"]
+
+    sr = normalize_smartrecruiters(
+        {"company": "Razorpay", "slug": "Razorpay"},
+        {"totalFound": 1, "content": [{
+            "id": "743999000000000001", "name": "Product Designer",
+            "releasedDate": "2026-04-17T12:25:57.000Z", "ref": "ref-1",
+            "location": {"city": "Bengaluru", "region": "Karnataka",
+                         "country": "India", "remote": False},
+        }]},
+    )
+    assert len(sr) == 1
+    _check_shape(sr[0], "smartrecruiters")
+    assert sr[0]["id"] == "smartrecruiters:Razorpay:743999000000000001"
+    assert sr[0]["url"] == "https://jobs.smartrecruiters.com/Razorpay/743999000000000001"
+    assert sr[0]["location"] == "Bengaluru, Karnataka, India"
+    assert sr[0]["posted_at"] == "2026-04-17"
+    assert sr[0]["description"] == ""
+
+    # smartrecruiters posting missing an id is skipped, never crashes.
+    sr2 = normalize_smartrecruiters(
+        {"company": "X", "slug": "x"},
+        {"content": [{"name": "No ID role"}, {"id": "9", "name": "Kept",
+                      "location": {"country": "India"}}]},
+    )
+    assert len(sr2) == 1 and sr2[0]["id"] == "smartrecruiters:x:9"
+    assert sr2[0]["location"] == "India"
 
     # workday is a stub: always empty, never raises.
     assert normalize_workday({"company": "X"}, {}) == []
