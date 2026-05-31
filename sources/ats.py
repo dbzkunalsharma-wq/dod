@@ -181,12 +181,17 @@ def normalize_smartrecruiters(entry: dict, data: dict) -> list[dict]:
         posting_id = j.get("id")
         if not posting_id:
             continue  # without an id we can't build a stable id/url; skip defensively
-        # location is a dict {city, region, country, remote}; join the present parts.
+        # location is a dict {city, region, country, fullLocation, remote}; prefer the
+        # ready-made fullLocation ("Mumbai, MH, India") — it carries the full country NAME,
+        # so the India geo-filter reliably matches India roles (the literal "India", even
+        # when the city is misspelled or uncommon) and rejects foreign ones. Fall back to
+        # joining the parts (there country is only a 2-letter code, e.g. "in").
         loc = j.get("location")
         location = None
         if isinstance(loc, dict):
-            parts = [loc.get("city"), loc.get("region"), loc.get("country")]
-            location = ", ".join(p for p in parts if p) or None
+            location = loc.get("fullLocation") or ", ".join(
+                p for p in (loc.get("city"), loc.get("region"), loc.get("country")) if p
+            ) or None
         elif isinstance(loc, str):
             location = loc
         out.append({
@@ -220,6 +225,9 @@ _GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?conten
 _LEVER_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
 _ASHBY_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=false"
 _SMARTRECRUITERS_URL = "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100"
+# Paged variant: SmartRecruiters caps a page at 100, so big boards need offset paging.
+_SMARTRECRUITERS_PAGE = "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset={offset}"
+_SMARTRECRUITERS_MAX = 1000  # page cap (10 pages) — covers the largest boards, runaway-safe
 
 # platform -> (url template, normalizer). workday handled separately (no fetch).
 _PLATFORMS = {
@@ -228,6 +236,25 @@ _PLATFORMS = {
     "ashby": (_ASHBY_URL, normalize_ashby),
     "smartrecruiters": (_SMARTRECRUITERS_URL, normalize_smartrecruiters),
 }
+
+
+def _fetch_smartrecruiters(client: httpx.Client, slug: str) -> dict:
+    """SmartRecruiters caps a page at 100 postings, and big boards (e.g. Canva ~300) push
+    their few India roles past page 1. Page through offsets until we've pulled totalFound
+    (or hit _SMARTRECRUITERS_MAX), returning a combined {"content": [...]} for the
+    normalizer. Raises on HTTP error like the single-GET path (caller logs + skips)."""
+    content: list[dict] = []
+    offset = 0
+    while offset < _SMARTRECRUITERS_MAX:
+        resp = client.get(_SMARTRECRUITERS_PAGE.format(slug=slug, offset=offset))
+        resp.raise_for_status()
+        data = resp.json()
+        page = data.get("content") or []
+        content.extend(page)
+        offset += 100
+        if offset >= (data.get("totalFound") or 0) or not page:
+            break
+    return {"content": content}
 
 
 def _fetch_one(client: httpx.Client, entry: dict) -> list[dict]:
@@ -246,6 +273,10 @@ def _fetch_one(client: httpx.Client, entry: dict) -> list[dict]:
         return []
 
     url_tmpl, normalizer = spec
+    # SmartRecruiters needs offset paging (100/page) so big boards' India roles aren't
+    # truncated; the other platforms return their full board in a single GET.
+    if platform == "smartrecruiters":
+        return normalizer(entry, _fetch_smartrecruiters(client, slug))
     resp = client.get(url_tmpl.format(slug=slug))
     resp.raise_for_status()
     return normalizer(entry, resp.json())
