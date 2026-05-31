@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { ogImageUrl } from "@/lib/og";
 import "./globals.css";
 
@@ -86,6 +87,7 @@ export default function RootLayout({
           <div className="dod-bloom dod-bloom--amber" />
         </div>
         {children}
+        <Analytics />
       </body>
     </html>
   );
